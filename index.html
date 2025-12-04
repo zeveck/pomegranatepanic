@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Pomegranate Panic</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            background: #1a1a2e;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="game"></canvas>
+    <script>
+        // Prevent all default touch behaviors
+        document.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+        document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+        document.addEventListener('touchend', e => e.preventDefault(), { passive: false });
+        document.addEventListener('gesturestart', e => e.preventDefault());
+        document.addEventListener('gesturechange', e => e.preventDefault());
+        document.addEventListener('gestureend', e => e.preventDefault());
+
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        // Game constants
+        const GRAVITY = 500;
+        const BOUNCE_DAMPING = 0.5;
+        const WALL_BOUNCE = 0.6;
+        const BASE_ROLL_SPEED = 30; // Very slow start for chill path-building
+        const SPEED_INCREASE_RATE = 0.025; // Speed multiplier increase per second
+
+        // Ramp configurations
+        const RAMP_ANGLES = [-35, -20, -10, 10, 20, 35]; // degrees, negative = left, positive = right
+        const RAMP_LENGTHS = [80, 120, 160]; // pixels at base resolution
+        const RAMP_THICKNESS = 12;
+
+        // Game state
+        let gameState = 'playing'; // 'playing', 'gameover'
+        let score = 0;
+        let speedMultiplier = 1;
+        let gameTime = 0;
+
+        // Pomegranate state
+        let pom = {
+            x: 0,
+            y: 0,
+            vx: 0,
+            vy: 0,
+            radius: 18,
+            rotation: 0,
+            onRamp: null,
+            rampProgress: 0, // 0 to 1, position along current ramp
+            wobble: 0, // Wobble phase for irregular rolling
+            wobbleIntensity: 0 // Current wobble intensity
+        };
+
+        // Ramps
+        let ramps = [];
+        let nextRamp = null;
+
+        // Screen dimensions (will be set on resize)
+        let width, height, scale;
+
+        function resize() {
+            const dpr = window.devicePixelRatio || 1;
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            ctx.scale(dpr, dpr);
+            scale = Math.min(width, height) / 400; // Base scale for consistent sizing
+        }
+
+        function generateRandomRamp() {
+            const angle = RAMP_ANGLES[Math.floor(Math.random() * RAMP_ANGLES.length)];
+            const length = RAMP_LENGTHS[Math.floor(Math.random() * RAMP_LENGTHS.length)] * scale;
+            return { angle, length };
+        }
+
+        function createRamp(x, y, angle, length) {
+            const rad = angle * Math.PI / 180;
+            return {
+                x,
+                y,
+                angle,
+                length,
+                rad,
+                // Calculate endpoints
+                x1: x - Math.cos(rad) * length / 2,
+                y1: y - Math.sin(rad) * length / 2,
+                x2: x + Math.cos(rad) * length / 2,
+                y2: y + Math.sin(rad) * length / 2,
+                opacity: 1,
+                passed: false
+            };
+        }
+
+        function initGame() {
+            gameState = 'playing';
+            score = 0;
+            speedMultiplier = 1;
+            gameTime = 0;
+            ramps = [];
+
+            // Create starting ramp at top center - extra long and gentle slope
+            const startRamp = createRamp(
+                width / 2,
+                height * 0.1,
+                5, // Very slight right tilt to start
+                280 * scale
+            );
+            ramps.push(startRamp);
+
+            // Initialize pomegranate radius first
+            const pomRadius = 18 * scale;
+
+            // Position pomegranate at the LEFT (uphill) end of the starting ramp
+            pom = {
+                x: startRamp.x1 + 30 * scale,
+                y: startRamp.y1 - pomRadius - 5,
+                vx: 0,
+                vy: 0,
+                radius: pomRadius,
+                rotation: 0,
+                onRamp: startRamp,
+                rampProgress: -0.42, // Start very close to the left end
+                wobble: 0,
+                wobbleIntensity: 0
+            };
+
+            // Generate first "next" ramp
+            nextRamp = generateRandomRamp();
+        }
+
+        function placeRamp(x, y) {
+            if (gameState !== 'playing' || !nextRamp) return;
+
+            const ramp = createRamp(x, y, nextRamp.angle, nextRamp.length);
+            ramps.push(ramp);
+            nextRamp = generateRandomRamp();
+        }
+
+        function pointToLineDistance(px, py, x1, y1, x2, y2) {
+            const A = px - x1;
+            const B = py - y1;
+            const C = x2 - x1;
+            const D = y2 - y1;
+
+            const dot = A * C + B * D;
+            const lenSq = C * C + D * D;
+            let t = lenSq !== 0 ? dot / lenSq : -1;
+
+            t = Math.max(0, Math.min(1, t));
+
+            const nearestX = x1 + t * C;
+            const nearestY = y1 + t * D;
+
+            return {
+                distance: Math.sqrt((px - nearestX) ** 2 + (py - nearestY) ** 2),
+                t,
+                nearestX,
+                nearestY
+            };
+        }
+
+        function updatePomegranate(dt) {
+            if (gameState !== 'playing') return;
+
+            const effectiveSpeed = BASE_ROLL_SPEED * speedMultiplier * scale;
+
+            if (pom.onRamp) {
+                // Rolling on a ramp
+                const ramp = pom.onRamp;
+                const rad = ramp.rad;
+
+                // Move along ramp based on angle (steeper = faster)
+                const rollSpeed = effectiveSpeed * (1 + Math.abs(Math.sin(rad)) * 1.5);
+                const direction = ramp.angle > 0 ? 1 : -1; // Roll in direction of tilt
+
+                pom.rampProgress += (rollSpeed * dt) / ramp.length * direction;
+
+                // Calculate position on ramp
+                const t = 0.5 + pom.rampProgress;
+                pom.x = ramp.x1 + (ramp.x2 - ramp.x1) * t;
+                pom.y = ramp.y1 + (ramp.y2 - ramp.y1) * t - pom.radius - 2;
+
+                // Update rotation based on movement
+                pom.rotation += rollSpeed * dt * direction / pom.radius;
+
+                // Add wobble effect - pomegranate isn't perfectly round
+                pom.wobble += rollSpeed * dt * 0.15;
+                pom.wobbleIntensity = Math.min(1, rollSpeed / 100); // More wobble at higher speeds
+                // Apply subtle vertical wobble
+                pom.y += Math.sin(pom.wobble * 4) * 1.5 * pom.wobbleIntensity * scale;
+
+                // Check if fallen off ramp
+                if (t < 0 || t > 1) {
+                    pom.onRamp = null;
+                    pom.vx = Math.cos(rad) * rollSpeed * direction;
+                    pom.vy = Math.sin(rad) * rollSpeed * direction + 50;
+                    ramp.passed = true;
+                }
+            } else {
+                // Falling/airborne
+                pom.vy += GRAVITY * dt;
+                pom.x += pom.vx * dt;
+                pom.y += pom.vy * dt;
+                pom.rotation += pom.vx / pom.radius * dt;
+
+                // Wall collisions
+                if (pom.x - pom.radius < 0) {
+                    pom.x = pom.radius;
+                    pom.vx = -pom.vx * WALL_BOUNCE;
+                }
+                if (pom.x + pom.radius > width) {
+                    pom.x = width - pom.radius;
+                    pom.vx = -pom.vx * WALL_BOUNCE;
+                }
+
+                // Check for ramp landing - use generous collision detection
+                for (const ramp of ramps) {
+                    if (ramp.passed) continue;
+
+                    // Check collision with bottom of pomegranate
+                    const result = pointToLineDistance(pom.x, pom.y + pom.radius, ramp.x1, ramp.y1, ramp.x2, ramp.y2);
+
+                    // Very generous landing threshold to prevent tunneling
+                    const landingThreshold = RAMP_THICKNESS * scale * 2 + pom.radius;
+
+                    if (result.distance < landingThreshold && pom.vy > 0) {
+                        // Check if we're within horizontal bounds of the ramp (with some margin)
+                        const rampMinX = Math.min(ramp.x1, ramp.x2) - pom.radius;
+                        const rampMaxX = Math.max(ramp.x1, ramp.x2) + pom.radius;
+
+                        if (pom.x >= rampMinX && pom.x <= rampMaxX) {
+                            // Land on ramp
+                            pom.onRamp = ramp;
+                            pom.rampProgress = result.t - 0.5;
+                            pom.vx = 0;
+                            pom.vy = 0;
+                            // Snap to ramp surface
+                            const rampYAtPoint = ramp.y1 + (ramp.y2 - ramp.y1) * result.t;
+                            pom.y = rampYAtPoint - pom.radius - 2;
+                            break;
+                        }
+                    }
+                }
+
+                // Game over check
+                if (pom.y - pom.radius > height) {
+                    gameState = 'gameover';
+                }
+            }
+        }
+
+        function updateRamps(dt) {
+            // Fade out passed ramps
+            for (let i = ramps.length - 1; i >= 0; i--) {
+                if (ramps[i].passed) {
+                    ramps[i].opacity -= dt * 0.5;
+                    if (ramps[i].opacity <= 0) {
+                        ramps.splice(i, 1);
+                    }
+                }
+            }
+        }
+
+        function update(dt) {
+            if (gameState === 'playing') {
+                gameTime += dt;
+                score = Math.floor(gameTime * 10);
+                speedMultiplier = 1 + gameTime * SPEED_INCREASE_RATE;
+            }
+
+            updatePomegranate(dt);
+            updateRamps(dt);
+        }
+
+        function drawPomegranate() {
+            ctx.save();
+            ctx.translate(pom.x, pom.y);
+            ctx.rotate(pom.rotation);
+
+            // Apply squash-stretch based on wobble (subtle effect)
+            const squash = 1 + Math.sin(pom.wobble * 4) * 0.03 * pom.wobbleIntensity;
+            ctx.scale(1 / squash, squash);
+
+            // Main body - deep red/burgundy with gradient
+            const gradient = ctx.createRadialGradient(-pom.radius * 0.3, -pom.radius * 0.3, 0, 0, 0, pom.radius);
+            gradient.addColorStop(0, '#c41e3a');
+            gradient.addColorStop(0.5, '#8b0000');
+            gradient.addColorStop(1, '#4a0000');
+
+            // Slightly irregular shape with dynamic wobble
+            ctx.beginPath();
+            for (let i = 0; i < 12; i++) {
+                const angle = (i / 12) * Math.PI * 2;
+                // Static irregularity + dynamic wobble based on rolling
+                const staticWobble = 1 + Math.sin(i * 3) * 0.05;
+                const dynamicWobble = Math.sin(pom.wobble + i * 0.5) * 0.02 * pom.wobbleIntensity;
+                const r = pom.radius * (staticWobble + dynamicWobble);
+                if (i === 0) {
+                    ctx.moveTo(Math.cos(angle) * r, Math.sin(angle) * r);
+                } else {
+                    ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
+                }
+            }
+            ctx.closePath();
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // Calyx (crown) on top
+            ctx.fillStyle = '#654321';
+            ctx.beginPath();
+            const calyxY = -pom.radius * 0.8;
+            ctx.moveTo(-pom.radius * 0.25, calyxY);
+            ctx.lineTo(-pom.radius * 0.15, calyxY - pom.radius * 0.35);
+            ctx.lineTo(0, calyxY - pom.radius * 0.25);
+            ctx.lineTo(pom.radius * 0.15, calyxY - pom.radius * 0.35);
+            ctx.lineTo(pom.radius * 0.25, calyxY);
+            ctx.closePath();
+            ctx.fill();
+
+            // Highlight
+            ctx.beginPath();
+            ctx.arc(-pom.radius * 0.3, -pom.radius * 0.3, pom.radius * 0.25, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function drawRamp(ramp) {
+            ctx.save();
+            ctx.globalAlpha = ramp.opacity;
+
+            // Wood grain effect
+            const gradient = ctx.createLinearGradient(ramp.x1, ramp.y1, ramp.x2, ramp.y2);
+            gradient.addColorStop(0, '#8B7355');
+            gradient.addColorStop(0.3, '#A0896C');
+            gradient.addColorStop(0.5, '#8B7355');
+            gradient.addColorStop(0.7, '#9C8162');
+            gradient.addColorStop(1, '#8B7355');
+
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = RAMP_THICKNESS * scale;
+            ctx.lineCap = 'round';
+
+            ctx.beginPath();
+            ctx.moveTo(ramp.x1, ramp.y1);
+            ctx.lineTo(ramp.x2, ramp.y2);
+            ctx.stroke();
+
+            // Edge highlight
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 2 * scale;
+            ctx.beginPath();
+            ctx.moveTo(ramp.x1, ramp.y1 - RAMP_THICKNESS * scale * 0.3);
+            ctx.lineTo(ramp.x2, ramp.y2 - RAMP_THICKNESS * scale * 0.3);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function drawNextRampPreview() {
+            if (!nextRamp) return;
+
+            const previewX = width - 60 * scale;
+            const previewY = height - 60 * scale;
+            const previewScale = 0.4;
+
+            // Background
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.beginPath();
+            ctx.roundRect(previewX - 50 * scale, previewY - 40 * scale, 100 * scale, 80 * scale, 10 * scale);
+            ctx.fill();
+
+            // Label
+            ctx.fillStyle = '#fff';
+            ctx.font = `${12 * scale}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.fillText('NEXT', previewX, previewY - 25 * scale);
+
+            // Preview ramp
+            const rad = nextRamp.angle * Math.PI / 180;
+            const len = nextRamp.length * previewScale;
+
+            ctx.strokeStyle = '#A0896C';
+            ctx.lineWidth = RAMP_THICKNESS * scale * previewScale;
+            ctx.lineCap = 'round';
+
+            ctx.beginPath();
+            ctx.moveTo(previewX - Math.cos(rad) * len / 2, previewY - Math.sin(rad) * len / 2);
+            ctx.lineTo(previewX + Math.cos(rad) * len / 2, previewY + Math.sin(rad) * len / 2);
+            ctx.stroke();
+        }
+
+        function drawScore() {
+            ctx.fillStyle = '#fff';
+            ctx.font = `bold ${24 * scale}px Arial`;
+            ctx.textAlign = 'left';
+            ctx.fillText(`Score: ${score}`, 20 * scale, 40 * scale);
+
+            // Speed indicator
+            ctx.font = `${14 * scale}px Arial`;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.fillText(`Speed: ${speedMultiplier.toFixed(1)}x`, 20 * scale, 60 * scale);
+        }
+
+        function drawGameOver() {
+            // Darken background
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Splat effect
+            ctx.fillStyle = '#8b0000';
+            ctx.beginPath();
+            for (let i = 0; i < 8; i++) {
+                const angle = (i / 8) * Math.PI * 2;
+                const r = 60 * scale + Math.random() * 30 * scale;
+                ctx.lineTo(pom.x + Math.cos(angle) * r, Math.min(pom.y, height - 100) + Math.sin(angle) * r);
+            }
+            ctx.closePath();
+            ctx.fill();
+
+            // Game over text
+            ctx.fillStyle = '#fff';
+            ctx.font = `bold ${48 * scale}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.fillText('GAME OVER', width / 2, height / 2 - 40 * scale);
+
+            ctx.font = `${32 * scale}px Arial`;
+            ctx.fillText(`Score: ${score}`, width / 2, height / 2 + 20 * scale);
+
+            ctx.font = `${20 * scale}px Arial`;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.fillText('Tap to restart', width / 2, height / 2 + 70 * scale);
+        }
+
+        function draw() {
+            // Background gradient
+            const bgGradient = ctx.createLinearGradient(0, 0, 0, height);
+            bgGradient.addColorStop(0, '#1a1a2e');
+            bgGradient.addColorStop(1, '#16213e');
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw walls (subtle)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.fillRect(0, 0, 4 * scale, height);
+            ctx.fillRect(width - 4 * scale, 0, 4 * scale, height);
+
+            // Draw ramps
+            for (const ramp of ramps) {
+                drawRamp(ramp);
+            }
+
+            // Draw pomegranate
+            if (gameState === 'playing') {
+                drawPomegranate();
+            }
+
+            // UI
+            drawScore();
+            drawNextRampPreview();
+
+            // Game over overlay
+            if (gameState === 'gameover') {
+                drawGameOver();
+            }
+        }
+
+        // Input handling
+        function handleInput(x, y) {
+            if (gameState === 'gameover') {
+                initGame();
+            } else {
+                placeRamp(x, y);
+            }
+        }
+
+        canvas.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            handleInput(touch.clientX, touch.clientY);
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            handleInput(e.clientX, e.clientY);
+        });
+
+        // Game loop
+        let lastTime = 0;
+        function gameLoop(timestamp) {
+            const dt = Math.min((timestamp - lastTime) / 1000, 0.1); // Cap delta time
+            lastTime = timestamp;
+
+            update(dt);
+            draw();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Initialize
+        window.addEventListener('resize', resize);
+        resize();
+        initGame();
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>

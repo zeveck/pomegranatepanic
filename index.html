@@ -46,7 +46,7 @@
         const ctx = canvas.getContext('2d');
 
         // Version
-        const VERSION = 'v0.1.0';
+        const VERSION = 'v0.1.1';
 
         // Game constants
         const GRAVITY = 500;
@@ -76,8 +76,7 @@
             rotation: 0,
             onRamp: null,
             rampProgress: 0, // 0 to 1, position along current ramp
-            wobble: 0, // Wobble phase for irregular rolling
-            wobbleIntensity: 0 // Current wobble intensity
+            nibBump: 0 // Intensity of current nib bump (0-1)
         };
 
         // Ramps
@@ -150,8 +149,7 @@
                 rotation: 0,
                 onRamp: startRamp,
                 rampProgress: -0.42, // Start very close to the left end
-                wobble: 0,
-                wobbleIntensity: 0
+                nibBump: 0
             };
 
             // Generate first "next" ramp
@@ -213,11 +211,22 @@
                 // Update rotation based on movement
                 pom.rotation += rollSpeed * dt * direction / pom.radius;
 
-                // Add wobble effect - pomegranate isn't perfectly round
-                pom.wobble += rollSpeed * dt * 0.15;
-                pom.wobbleIntensity = Math.min(1, rollSpeed / 100); // More wobble at higher speeds
-                // Apply subtle vertical wobble
-                pom.y += Math.sin(pom.wobble * 4) * 1.5 * pom.wobbleIntensity * scale;
+                // Nib-bump effect: only bump when the calyx (nib) contacts the ramp
+                // Calyx is at local angle -π/2 (top), hits ground when rotated to π/2 (bottom)
+                const calyxAngle = (-Math.PI / 2 + pom.rotation) % (Math.PI * 2);
+                const calyxDown = Math.sin(calyxAngle); // 1.0 when calyx points straight down
+
+                // Only bump when calyx is contacting the surface
+                const bumpThreshold = 0.85;
+                if (calyxDown > bumpThreshold) {
+                    // Intensity based on how directly the nib is hitting
+                    const bumpIntensity = (calyxDown - bumpThreshold) / (1 - bumpThreshold);
+                    // Vertical bump - lift the pomegranate slightly
+                    pom.y -= bumpIntensity * 3 * scale;
+                    pom.nibBump = bumpIntensity;
+                } else {
+                    pom.nibBump = 0;
+                }
 
                 // Check if fallen off ramp
                 if (t < 0 || t > 1) {
@@ -307,8 +316,8 @@
             ctx.translate(pom.x, pom.y);
             ctx.rotate(pom.rotation);
 
-            // Apply squash-stretch based on wobble (subtle effect)
-            const squash = 1 + Math.sin(pom.wobble * 4) * 0.03 * pom.wobbleIntensity;
+            // Apply squash only during nib bump (not constant wobble)
+            const squash = 1 + (pom.nibBump || 0) * 0.08;
             ctx.scale(1 / squash, squash);
 
             // Main body - deep red/burgundy with gradient
@@ -317,14 +326,12 @@
             gradient.addColorStop(0.5, '#8b0000');
             gradient.addColorStop(1, '#4a0000');
 
-            // Slightly irregular shape with dynamic wobble
+            // Slightly irregular shape (static only - no dynamic wobble)
             ctx.beginPath();
             for (let i = 0; i < 12; i++) {
                 const angle = (i / 12) * Math.PI * 2;
-                // Static irregularity + dynamic wobble based on rolling
                 const staticWobble = 1 + Math.sin(i * 3) * 0.05;
-                const dynamicWobble = Math.sin(pom.wobble + i * 0.5) * 0.02 * pom.wobbleIntensity;
-                const r = pom.radius * (staticWobble + dynamicWobble);
+                const r = pom.radius * staticWobble;
                 if (i === 0) {
                     ctx.moveTo(Math.cos(angle) * r, Math.sin(angle) * r);
                 } else {

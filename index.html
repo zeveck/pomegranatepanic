@@ -46,7 +46,7 @@
         const ctx = canvas.getContext('2d');
 
         // Version
-        const VERSION = 'v0.1.2';
+        const VERSION = 'v0.1.3';
 
         // Game constants
         const GRAVITY = 500;
@@ -83,6 +83,10 @@
         // Ramps
         let ramps = [];
         let nextRamp = null;
+        let lastRampDirection = 1; // 1 = right, -1 = left (for alternating)
+
+        // Ghost preview state
+        let ghostPosition = null; // {x, y} or null when not showing
 
         // Screen dimensions (will be set on resize)
         let width, height, scale;
@@ -98,8 +102,18 @@
         }
 
         function generateRandomRamp() {
-            const angle = RAMP_ANGLES[Math.floor(Math.random() * RAMP_ANGLES.length)];
+            // Tend to alternate directions, but with 30% chance of same direction
+            const preferredDirection = -lastRampDirection;
+            const actualDirection = Math.random() < 0.7 ? preferredDirection : lastRampDirection;
+
+            // Filter angles by direction
+            const availableAngles = RAMP_ANGLES.filter(a =>
+                actualDirection > 0 ? a > 0 : a < 0
+            );
+            const angle = availableAngles[Math.floor(Math.random() * availableAngles.length)];
             const length = RAMP_LENGTHS[Math.floor(Math.random() * RAMP_LENGTHS.length)] * scale;
+
+            lastRampDirection = actualDirection;
             return { angle, length };
         }
 
@@ -269,6 +283,12 @@
                         const rampMaxX = Math.max(ramp.x1, ramp.x2) + pom.radius;
 
                         if (pom.x >= rampMinX && pom.x <= rampMaxX) {
+                            // Make all other ramps slightly translucent
+                            for (const r of ramps) {
+                                if (r !== ramp && !r.passed && r.opacity > 0.5) {
+                                    r.opacity = 0.5;
+                                }
+                            }
                             // Land on ramp
                             pom.onRamp = ramp;
                             pom.rampProgress = result.t - 0.5;
@@ -431,6 +451,30 @@
             ctx.stroke();
         }
 
+        function drawGhostRamp() {
+            if (!ghostPosition || !nextRamp || gameState !== 'playing') return;
+
+            const rad = nextRamp.angle * Math.PI / 180;
+            const len = nextRamp.length;
+            const x = ghostPosition.x;
+            const y = ghostPosition.y;
+
+            ctx.save();
+            ctx.globalAlpha = 0.4;
+
+            // Ghost ramp with same style but translucent
+            ctx.strokeStyle = '#A0896C';
+            ctx.lineWidth = RAMP_THICKNESS * scale;
+            ctx.lineCap = 'round';
+
+            ctx.beginPath();
+            ctx.moveTo(x - Math.cos(rad) * len / 2, y - Math.sin(rad) * len / 2);
+            ctx.lineTo(x + Math.cos(rad) * len / 2, y + Math.sin(rad) * len / 2);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
         function drawScore() {
             ctx.fillStyle = '#fff';
             ctx.font = `bold ${24 * scale}px Arial`;
@@ -535,6 +579,9 @@
             ctx.fillRect(0, 0, 4 * scale, height);
             ctx.fillRect(width - 4 * scale, 0, 4 * scale, height);
 
+            // Draw ghost ramp preview
+            drawGhostRamp();
+
             // Draw ramps
             for (const ramp of ramps) {
                 drawRamp(ramp);
@@ -567,11 +614,29 @@
 
         canvas.addEventListener('touchstart', (e) => {
             const touch = e.touches[0];
+            ghostPosition = { x: touch.clientX, y: touch.clientY };
             handleInput(touch.clientX, touch.clientY);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            const touch = e.touches[0];
+            ghostPosition = { x: touch.clientX, y: touch.clientY };
+        });
+
+        canvas.addEventListener('touchend', () => {
+            ghostPosition = null;
         });
 
         canvas.addEventListener('mousedown', (e) => {
             handleInput(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            ghostPosition = { x: e.clientX, y: e.clientY };
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            ghostPosition = null;
         });
 
         // Game loop

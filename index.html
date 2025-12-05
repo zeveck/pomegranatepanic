@@ -46,7 +46,7 @@
         const ctx = canvas.getContext('2d');
 
         // Version
-        const VERSION = 'v0.1.1';
+        const VERSION = 'v0.1.2';
 
         // Game constants
         const GRAVITY = 500;
@@ -65,6 +65,7 @@
         let score = 0;
         let speedMultiplier = 1;
         let gameTime = 0;
+        let gameOverRotation = 0;
 
         // Pomegranate state
         let pom = {
@@ -305,6 +306,8 @@
                 gameTime += dt;
                 score = Math.floor(gameTime * 10);
                 speedMultiplier = 1 + gameTime * SPEED_INCREASE_RATE;
+            } else if (gameState === 'gameover') {
+                gameOverRotation += dt; // Rotate 1 radian per second
             }
 
             updatePomegranate(dt);
@@ -447,34 +450,76 @@
             ctx.fillText(VERSION, width - 10 * scale, height - 10 * scale);
         }
 
+        function drawPomegranateAt(x, y, radius, rotation) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(rotation);
+
+            // Main body - deep red/burgundy with gradient
+            const gradient = ctx.createRadialGradient(-radius * 0.3, -radius * 0.3, 0, 0, 0, radius);
+            gradient.addColorStop(0, '#c41e3a');
+            gradient.addColorStop(0.5, '#8b0000');
+            gradient.addColorStop(1, '#4a0000');
+
+            // Slightly irregular shape
+            ctx.beginPath();
+            for (let i = 0; i < 12; i++) {
+                const angle = (i / 12) * Math.PI * 2;
+                const staticWobble = 1 + Math.sin(i * 3) * 0.05;
+                const r = radius * staticWobble;
+                if (i === 0) {
+                    ctx.moveTo(Math.cos(angle) * r, Math.sin(angle) * r);
+                } else {
+                    ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
+                }
+            }
+            ctx.closePath();
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // Calyx (crown) on top
+            ctx.fillStyle = '#654321';
+            ctx.beginPath();
+            const calyxY = -radius * 0.8;
+            ctx.moveTo(-radius * 0.25, calyxY);
+            ctx.lineTo(-radius * 0.15, calyxY - radius * 0.35);
+            ctx.lineTo(0, calyxY - radius * 0.25);
+            ctx.lineTo(radius * 0.15, calyxY - radius * 0.35);
+            ctx.lineTo(radius * 0.25, calyxY);
+            ctx.closePath();
+            ctx.fill();
+
+            // Highlight
+            ctx.beginPath();
+            ctx.arc(-radius * 0.3, -radius * 0.3, radius * 0.25, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.fill();
+
+            ctx.restore();
+        }
+
         function drawGameOver() {
             // Darken background
             ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
             ctx.fillRect(0, 0, width, height);
 
-            // Splat effect
-            ctx.fillStyle = '#8b0000';
-            ctx.beginPath();
-            for (let i = 0; i < 8; i++) {
-                const angle = (i / 8) * Math.PI * 2;
-                const r = 60 * scale + Math.random() * 30 * scale;
-                ctx.lineTo(pom.x + Math.cos(angle) * r, Math.min(pom.y, height - 100) + Math.sin(angle) * r);
-            }
-            ctx.closePath();
-            ctx.fill();
+            // Draw the pomegranate in the center, slowly rotating
+            const pomY = height / 2 - 80 * scale;
+            const pomRadius = 40 * scale;
+            drawPomegranateAt(width / 2, pomY, pomRadius, gameOverRotation);
 
             // Game over text
             ctx.fillStyle = '#fff';
             ctx.font = `bold ${48 * scale}px Arial`;
             ctx.textAlign = 'center';
-            ctx.fillText('GAME OVER', width / 2, height / 2 - 40 * scale);
+            ctx.fillText('GAME OVER', width / 2, height / 2 + 20 * scale);
 
             ctx.font = `${32 * scale}px Arial`;
-            ctx.fillText(`Score: ${score}`, width / 2, height / 2 + 20 * scale);
+            ctx.fillText(`Score: ${score}`, width / 2, height / 2 + 70 * scale);
 
             ctx.font = `${20 * scale}px Arial`;
             ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-            ctx.fillText('Tap to restart', width / 2, height / 2 + 70 * scale);
+            ctx.fillText('Tap to restart', width / 2, height / 2 + 120 * scale);
         }
 
         function draw() {

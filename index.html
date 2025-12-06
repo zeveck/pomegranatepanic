@@ -46,13 +46,13 @@
         const ctx = canvas.getContext('2d');
 
         // Version
-        const VERSION = 'v0.1.4';
+        const VERSION = 'v0.1.5';
 
         // Game constants
-        const GRAVITY = 500;
+        const GRAVITY = 800; // Faster falling
         const BOUNCE_DAMPING = 0.5;
         const WALL_BOUNCE = 0.6;
-        const BASE_ROLL_SPEED = 30; // Very slow start for chill path-building
+        const BASE_ROLL_SPEED = 60; // Faster initial roll
         const SPEED_INCREASE_RATE = 0.025; // Speed multiplier increase per second
 
         // Ramp configurations
@@ -89,6 +89,10 @@
 
         // Ghost preview state
         let ghostPosition = null; // {x, y} or null when not showing
+
+        // Fall tracking for bounce/bonus system
+        let fallStartY = null;
+        let floatingTexts = []; // Bonus point displays
 
         // Screen dimensions (will be set on resize)
         let width, height, scale;
@@ -175,6 +179,10 @@
             // Initialize camera so pom starts at 1/3 from top
             cameraY = pom.y - height / 3;
             cameraVelocity = 0;
+
+            // Reset fall tracking and floating texts
+            fallStartY = null;
+            floatingTexts = [];
         }
 
         function placeRamp(x, y) {
@@ -257,6 +265,7 @@
                     pom.vx = Math.cos(rad) * rollSpeed * direction;
                     pom.vy = Math.sin(rad) * rollSpeed * direction + 50;
                     ramp.passed = true;
+                    fallStartY = pom.y; // Start tracking fall distance
                 }
             } else {
                 // Falling/airborne
@@ -291,20 +300,54 @@
                         const rampMaxX = Math.max(ramp.x1, ramp.x2) + pom.radius;
 
                         if (pom.x >= rampMinX && pom.x <= rampMaxX) {
-                            // Make all other ramps slightly translucent
-                            for (const r of ramps) {
-                                if (r !== ramp && !r.passed && r.opacity > 0.5) {
-                                    r.opacity = 0.5;
+                            // Check for bounce opportunity from a big fall
+                            const bounceThreshold = 80 * scale;
+                            let shouldBounce = false;
+
+                            if (fallStartY !== null) {
+                                const fallDistance = pom.y - fallStartY;
+
+                                if (fallDistance > bounceThreshold) {
+                                    // Snap pom to ramp surface first (so bounce looks right)
+                                    const rampYAtPoint = ramp.y1 + (ramp.y2 - ramp.y1) * result.t;
+                                    pom.y = rampYAtPoint - pom.radius - 2;
+
+                                    // BOUNCE! Calculate upward velocity (strong enough to be clearly visible)
+                                    const bounceVelocity = -Math.min(fallDistance * 1.2, 700);
+                                    pom.vy = bounceVelocity;
+                                    pom.vx = pom.vx * 0.8; // Retain some horizontal momentum
+
+                                    // Award bonus points
+                                    const bonusPoints = Math.floor((fallDistance - bounceThreshold) / (2 * scale));
+                                    if (bonusPoints > 0) {
+                                        score += bonusPoints;
+                                        addFloatingText(pom.x, pom.y, `+${bonusPoints}`);
+                                    }
+
+                                    // Clear fall tracking so next landing is normal
+                                    fallStartY = null;
+                                    shouldBounce = true;
                                 }
                             }
-                            // Land on ramp
-                            pom.onRamp = ramp;
-                            pom.rampProgress = result.t - 0.5;
-                            pom.vx = 0;
-                            pom.vy = 0;
-                            // Snap to ramp surface
-                            const rampYAtPoint = ramp.y1 + (ramp.y2 - ramp.y1) * result.t;
-                            pom.y = rampYAtPoint - pom.radius - 2;
+
+                            if (!shouldBounce) {
+                                // Normal landing
+                                // Make all other ramps slightly translucent
+                                for (const r of ramps) {
+                                    if (r !== ramp && !r.passed && r.opacity > 0.5) {
+                                        r.opacity = 0.5;
+                                    }
+                                }
+                                // Land on ramp
+                                pom.onRamp = ramp;
+                                pom.rampProgress = result.t - 0.5;
+                                pom.vx = 0;
+                                pom.vy = 0;
+                                // Snap to ramp surface
+                                const rampYAtPoint = ramp.y1 + (ramp.y2 - ramp.y1) * result.t;
+                                pom.y = rampYAtPoint - pom.radius - 2;
+                                fallStartY = null; // Clear fall tracking
+                            }
                             break;
                         }
                     }
@@ -326,6 +369,69 @@
                         ramps.splice(i, 1);
                     }
                 }
+            }
+        }
+
+        // Floating text functions for bonus points display
+        function addFloatingText(x, y, text) {
+            floatingTexts.push({
+                x,
+                y,
+                text,
+                age: 0,
+                maxAge: 1.5
+            });
+        }
+
+        function updateFloatingTexts(dt) {
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                const ft = floatingTexts[i];
+                ft.age += dt;
+                ft.y -= 60 * scale * dt; // Float upward
+                if (ft.age >= ft.maxAge) {
+                    floatingTexts.splice(i, 1);
+                }
+            }
+        }
+
+        function drawFloatingTexts() {
+            for (const ft of floatingTexts) {
+                const progress = ft.age / ft.maxAge;
+                const alpha = Math.max(0, 1 - progress * progress); // Ease out fade
+
+                // Rainbow: rapidly cycle through hues
+                const hue = (Date.now() / 5 + ft.x) % 360;
+
+                // Shimmer: oscillate position slightly
+                const shimmerX = Math.sin(ft.age * 15) * 3 * scale;
+                const shimmerY = Math.sin(ft.age * 12) * 2 * scale;
+
+                // Scale: start big, shrink slightly
+                const textScale = 1 + (1 - progress) * 0.3;
+
+                ctx.save();
+                ctx.globalAlpha = alpha;
+
+                // Glow effect
+                ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+                ctx.shadowBlur = 15 * scale;
+
+                ctx.font = `bold ${24 * scale * textScale}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.fillStyle = `hsl(${hue}, 100%, 70%)`;
+
+                const drawX = ft.x + shimmerX;
+                const drawY = ft.y - cameraY + shimmerY;
+
+                // Draw outline for visibility
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 3 * scale;
+                ctx.strokeText(ft.text, drawX, drawY);
+
+                // Draw fill
+                ctx.fillText(ft.text, drawX, drawY);
+
+                ctx.restore();
             }
         }
 
@@ -366,6 +472,7 @@
 
             updatePomegranate(dt);
             updateRamps(dt);
+            updateFloatingTexts(dt);
         }
 
         function drawPomegranate() {
@@ -630,6 +737,9 @@
                 drawPomegranate();
             }
 
+            // Draw floating bonus texts
+            drawFloatingTexts();
+
             // UI
             drawScore();
             drawVersion();
@@ -653,7 +763,10 @@
         canvas.addEventListener('touchstart', (e) => {
             const touch = e.touches[0];
             ghostPosition = { x: touch.clientX, y: touch.clientY };
-            handleInput(touch.clientX, touch.clientY);
+            // On game over, restart immediately on touch
+            if (gameState === 'gameover') {
+                initGame();
+            }
         });
 
         canvas.addEventListener('touchmove', (e) => {
@@ -661,7 +774,11 @@
             ghostPosition = { x: touch.clientX, y: touch.clientY };
         });
 
-        canvas.addEventListener('touchend', () => {
+        canvas.addEventListener('touchend', (e) => {
+            // Place ramp where user releases (using last ghost position)
+            if (gameState === 'playing' && ghostPosition) {
+                placeRamp(ghostPosition.x, ghostPosition.y);
+            }
             ghostPosition = null;
         });
 

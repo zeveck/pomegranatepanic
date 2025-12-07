@@ -46,14 +46,14 @@
         const ctx = canvas.getContext('2d');
 
         // Version
-        const VERSION = 'v0.1.5';
+        const VERSION = 'v0.1.6';
 
         // Game constants
         const GRAVITY = 800; // Faster falling
         const BOUNCE_DAMPING = 0.5;
         const WALL_BOUNCE = 0.6;
-        const BASE_ROLL_SPEED = 60; // Faster initial roll
-        const SPEED_INCREASE_RATE = 0.025; // Speed multiplier increase per second
+        const BASE_ROLL_SPEED = 80; // Faster initial roll
+        const SPEED_INCREASE_RATE = 0.06; // Speed multiplier increase per second
 
         // Ramp configurations
         const RAMP_ANGLES = [-35, -20, -10, 10, 20, 35]; // degrees, negative = left, positive = right
@@ -63,6 +63,7 @@
         // Game state
         let gameState = 'playing'; // 'playing', 'gameover'
         let score = 0;
+        let bonusScore = 0; // Accumulated bonus points from bounces
         let speedMultiplier = 1;
         let gameTime = 0;
         let gameOverRotation = 0;
@@ -93,6 +94,8 @@
         // Fall tracking for bounce/bonus system
         let fallStartY = null;
         let floatingTexts = []; // Bonus point displays
+        let isBouncing = false; // Prevent re-landing during bounce
+        let comboCount = 0; // Track consecutive bounces
 
         // Screen dimensions (will be set on resize)
         let width, height, scale;
@@ -144,16 +147,17 @@
         function initGame() {
             gameState = 'playing';
             score = 0;
+            bonusScore = 0;
             speedMultiplier = 1;
             gameTime = 0;
             ramps = [];
 
-            // Create starting ramp at top center - extra long and gentle slope
+            // Create starting ramp slightly left of center
             const startRamp = createRamp(
-                width / 2,
+                width / 2 - 40 * scale,
                 height * 0.1,
                 5, // Very slight right tilt to start
-                280 * scale
+                140 * scale
             );
             ramps.push(startRamp);
 
@@ -183,6 +187,8 @@
             // Reset fall tracking and floating texts
             fallStartY = null;
             floatingTexts = [];
+            isBouncing = false;
+            comboCount = 0;
         }
 
         function placeRamp(x, y) {
@@ -274,6 +280,11 @@
                 pom.y += pom.vy * dt;
                 pom.rotation += pom.vx / pom.radius * dt;
 
+                // Clear bouncing flag once we start falling again
+                if (isBouncing && pom.vy > 0) {
+                    isBouncing = false;
+                }
+
                 // Wall collisions
                 if (pom.x - pom.radius < 0) {
                     pom.x = pom.radius;
@@ -285,14 +296,16 @@
                 }
 
                 // Check for ramp landing - use generous collision detection
+                // Skip if currently bouncing (wait until falling again)
+                if (!isBouncing) {
                 for (const ramp of ramps) {
                     if (ramp.passed) continue;
 
                     // Check collision with bottom of pomegranate
                     const result = pointToLineDistance(pom.x, pom.y + pom.radius, ramp.x1, ramp.y1, ramp.x2, ramp.y2);
 
-                    // Very generous landing threshold to prevent tunneling
-                    const landingThreshold = RAMP_THICKNESS * scale * 2 + pom.radius;
+                    // Tighter landing threshold for better visual contact
+                    const landingThreshold = RAMP_THICKNESS * scale + 5;
 
                     if (result.distance < landingThreshold && pom.vy > 0) {
                         // Check if we're within horizontal bounds of the ramp (with some margin)
@@ -317,15 +330,26 @@
                                     pom.vy = bounceVelocity;
                                     pom.vx = pom.vx * 0.8; // Retain some horizontal momentum
 
-                                    // Award bonus points
-                                    const bonusPoints = Math.floor((fallDistance - bounceThreshold) / (2 * scale));
+                                    // Increment combo counter
+                                    comboCount++;
+                                    const comboMultiplier = Math.min(comboCount, 10); // Cap at 10x
+
+                                    // Award bonus points with combo multiplier
+                                    const basePoints = Math.floor((fallDistance - bounceThreshold) / (2 * scale));
+                                    const bonusPoints = basePoints * comboMultiplier;
                                     if (bonusPoints > 0) {
-                                        score += bonusPoints;
-                                        addFloatingText(pom.x, pom.y, `+${bonusPoints}`);
+                                        bonusScore += bonusPoints;
+                                        if (comboCount >= 2) {
+                                            addFloatingText(pom.x, pom.y - 30 * scale, `${comboCount}x COMBO!`);
+                                            addFloatingText(pom.x, pom.y, `+${bonusPoints}`);
+                                        } else {
+                                            addFloatingText(pom.x, pom.y, `+${bonusPoints}`);
+                                        }
                                     }
 
-                                    // Clear fall tracking so next landing is normal
-                                    fallStartY = null;
+                                    // Set new fall start for potential chain bounce
+                                    fallStartY = pom.y;
+                                    isBouncing = true;
                                     shouldBounce = true;
                                 }
                             }
@@ -347,11 +371,13 @@
                                 const rampYAtPoint = ramp.y1 + (ramp.y2 - ramp.y1) * result.t;
                                 pom.y = rampYAtPoint - pom.radius - 2;
                                 fallStartY = null; // Clear fall tracking
+                                comboCount = 0; // Reset combo on normal landing
                             }
                             break;
                         }
                     }
                 }
+                } // end if (!isBouncing)
 
                 // Game over check - pom fell below visible screen
                 if (pom.y - pom.radius - cameraY > height) {
@@ -438,7 +464,7 @@
         function update(dt) {
             if (gameState === 'playing') {
                 gameTime += dt;
-                score = Math.floor(gameTime * 10);
+                score = Math.floor(gameTime * 10) + bonusScore;
                 speedMultiplier = 1 + gameTime * SPEED_INCREASE_RATE;
 
                 // Camera smoothly follows pom, keeping it at ~1/3 from top

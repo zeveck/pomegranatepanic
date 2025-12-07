@@ -8,19 +8,16 @@ A mobile-first HTML5 game where you place ramps to keep a rolling pomegranate fr
 
 ## How to Play
 
-1. A pomegranate rolls down ramps, starting slowly
-2. Tap anywhere to place randomly-generated ramps
-3. Build a path to catch the pomegranate as it falls
-4. Keep it alive as long as possible - speed increases over time!
-5. Game over when the pomegranate falls off the bottom
+1. Tap/click to place ramps and catch the rolling pomegranate
+2. Big drops trigger bounces for bonus points - chain them for combos!
+3. Survive as long as possible as speed increases
 
 ## Features
 
-- **Mobile-first design** - Touch controls, portrait orientation, no zoom/scroll
-- **Random ramp generation** - Each ramp has a random angle and length (like Tetris pieces)
-- **Increasing difficulty** - Speed gradually ramps up from chill to frantic
-- **Satisfying physics** - Wobble effect as the pomegranate rolls
-- **Clean visuals** - Deep red pomegranate with calyx crown, wooden plank ramps
+- Mobile-first touch controls with drag-to-place and ghost preview
+- Random ramp generation (angle and length vary like Tetris pieces)
+- Bounce and combo system for bonus points
+- Increasing speed over time
 
 ## Running the Game
 
@@ -34,8 +31,8 @@ Then visit `http://localhost:8080`
 
 ## Controls
 
-- **Mobile**: Tap to place ramps, tap to restart after game over
-- **Desktop**: Click to place ramps, click to restart after game over
+- **Mobile**: Drag to position, release to place. Tap to restart.
+- **Desktop**: Click to place. Click to restart.
 
 ## Tech Stack
 
@@ -45,4 +42,4 @@ Then visit `http://localhost:8080`
 
 ## Version
 
-v0.1.5
+v0.1.6

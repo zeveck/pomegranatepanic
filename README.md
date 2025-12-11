@@ -42,4 +42,4 @@ Then visit `http://localhost:8080`
 
 ## Version
 
-v0.1.6
+v0.1.7

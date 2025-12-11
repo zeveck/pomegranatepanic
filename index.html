@@ -46,7 +46,7 @@
         const ctx = canvas.getContext('2d');
 
         // Version
-        const VERSION = 'v0.1.6';
+        const VERSION = 'v0.1.7';
 
         // Game constants
         const GRAVITY = 800; // Faster falling
@@ -59,6 +59,32 @@
         const RAMP_ANGLES = [-35, -20, -10, 10, 20, 35]; // degrees, negative = left, positive = right
         const RAMP_LENGTHS = [80, 120, 160]; // pixels at base resolution
         const RAMP_THICKNESS = 12;
+
+        // Bumper configurations
+        const BUMPER_CONFIGS = {
+            small:  { radius: 28, points: 50,  color: '#FF6B6B', lightColor: '#FFE66D' },
+            medium: { radius: 32, points: 100, color: '#4ECDC4', lightColor: '#FFFFFF' },
+            large:  { radius: 38, points: 150, color: '#9B59B6', lightColor: '#E74C3C' }
+        };
+        const JACKPOT_BUMPER = {
+            radius: 50,
+            pointsPerHit: 1000,
+            jackpotBonus: 5000,
+            maxHits: 5,
+            color: '#FFD700',
+            lightColor: '#FFFFFF',
+            shrinkPerHit: 0.15
+        };
+        const BUMPER_BOUNCE_FORCE = 500;
+        const BUMPER_RECOIL_DURATION = 0.15;
+        const BUMPER_LIGHT_DURATION = 0.25;
+        const BUMPER_RECOIL_SCALE = 0.85;
+        const BUMPER_MIN_SPAWN_INTERVAL = 2;
+        const BUMPER_MAX_SPAWN_INTERVAL = 5;
+        const BUMPER_SPAWN_MARGIN = 60;
+        const BUMPER_MIN_DISTANCE = 100;
+        const JACKPOT_SPAWN_INTERVAL = 45; // Minimum seconds between jackpot spawns
+        const DEPTH_VALUE_SCALE = 2000; // Every 2000px depth doubles bumper value
 
         // Game state
         let gameState = 'playing'; // 'playing', 'gameover'
@@ -96,6 +122,14 @@
         let floatingTexts = []; // Bonus point displays
         let isBouncing = false; // Prevent re-landing during bounce
         let comboCount = 0; // Track consecutive bounces
+
+        // Bumper state
+        let bumpers = [];
+        let bumperSpawnTimer = 0;
+        let nextBumperSpawnTime = 0;
+        let maxDepth = 0; // Maximum depth reached (for scaling bumper values)
+        let lastJackpotSpawnTime = 0; // Game time when last jackpot spawned
+        let hasActiveJackpot = false; // Only one jackpot at a time
 
         // Screen dimensions (will be set on resize)
         let width, height, scale;
@@ -189,6 +223,14 @@
             floatingTexts = [];
             isBouncing = false;
             comboCount = 0;
+
+            // Reset bumpers
+            bumpers = [];
+            bumperSpawnTimer = 0;
+            nextBumperSpawnTime = BUMPER_MIN_SPAWN_INTERVAL;
+            maxDepth = 0;
+            lastJackpotSpawnTime = 0;
+            hasActiveJackpot = false;
         }
 
         function placeRamp(x, y) {
@@ -295,6 +337,9 @@
                     pom.vx = -pom.vx * WALL_BOUNCE;
                 }
 
+                // Check bumper collisions (before ramp checks, bumpers take priority)
+                checkBumperCollisions();
+
                 // Check for ramp landing - use generous collision detection
                 // Skip if currently bouncing (wait until falling again)
                 if (!isBouncing) {
@@ -394,6 +439,221 @@
                     if (ramps[i].opacity <= 0) {
                         ramps.splice(i, 1);
                     }
+                }
+            }
+        }
+
+        // Bumper functions
+        function spawnBumper() {
+            // Calculate depth multiplier for point scaling
+            const depthMultiplier = 1 + Math.floor(maxDepth / DEPTH_VALUE_SCALE);
+
+            // Check if we should spawn a jackpot bumper
+            const timeSinceLastJackpot = gameTime - lastJackpotSpawnTime;
+            const canSpawnJackpot = !hasActiveJackpot && timeSinceLastJackpot >= JACKPOT_SPAWN_INTERVAL;
+            const spawnJackpot = canSpawnJackpot && Math.random() < 0.15; // 15% chance when eligible
+
+            let radius, size, points, isJackpot, hitsRemaining;
+
+            if (spawnJackpot) {
+                // Spawn jackpot bumper
+                radius = JACKPOT_BUMPER.radius * scale;
+                size = 'jackpot';
+                points = JACKPOT_BUMPER.pointsPerHit;
+                isJackpot = true;
+                hitsRemaining = JACKPOT_BUMPER.maxHits;
+            } else {
+                // Weighted random size: 50% small, 35% medium, 15% large
+                const sizeRoll = Math.random();
+                if (sizeRoll < 0.5) size = 'small';
+                else if (sizeRoll < 0.85) size = 'medium';
+                else size = 'large';
+
+                const config = BUMPER_CONFIGS[size];
+                radius = config.radius * scale;
+                // Apply depth multiplier to regular bumpers
+                points = config.points * depthMultiplier;
+                isJackpot = false;
+                hitsRemaining = 0;
+            }
+
+            // Spawn below visible screen
+            const spawnY = cameraY + height + 100 * scale + Math.random() * 200 * scale;
+
+            // X position: random within margins
+            const minX = BUMPER_SPAWN_MARGIN * scale + radius;
+            const maxX = width - BUMPER_SPAWN_MARGIN * scale - radius;
+            let spawnX = minX + Math.random() * (maxX - minX);
+
+            // Check minimum distance from existing bumpers
+            let validPosition = true;
+            for (const b of bumpers) {
+                const dist = Math.sqrt((spawnX - b.x) ** 2 + (spawnY - b.y) ** 2);
+                if (dist < BUMPER_MIN_DISTANCE * scale + radius + b.radius) {
+                    validPosition = false;
+                    break;
+                }
+            }
+
+            if (validPosition) {
+                const config = isJackpot ? JACKPOT_BUMPER : BUMPER_CONFIGS[size];
+                bumpers.push({
+                    x: spawnX,
+                    y: spawnY,
+                    radius: radius,
+                    baseRadius: radius, // Store original radius for shrinking
+                    size: size,
+                    points: points,
+                    recoilTime: 0,
+                    lightTime: 0,
+                    baseColor: config.color,
+                    lightColor: config.lightColor,
+                    isJackpot: isJackpot,
+                    hitsRemaining: hitsRemaining,
+                    pulsePhase: 0 // For jackpot pulsing animation
+                });
+
+                if (isJackpot) {
+                    hasActiveJackpot = true;
+                    lastJackpotSpawnTime = gameTime;
+                }
+            }
+        }
+
+        function updateBumperSpawning(dt) {
+            bumperSpawnTimer += dt;
+
+            // Spawn interval decreases with speed (more bumpers at higher speeds)
+            const spawnInterval = BUMPER_MAX_SPAWN_INTERVAL -
+                (BUMPER_MAX_SPAWN_INTERVAL - BUMPER_MIN_SPAWN_INTERVAL) *
+                Math.min(speedMultiplier / 3, 1);
+
+            if (bumperSpawnTimer >= nextBumperSpawnTime) {
+                spawnBumper();
+                bumperSpawnTimer = 0;
+                nextBumperSpawnTime = spawnInterval * (0.5 + Math.random() * 0.5);
+            }
+        }
+
+        function updateBumpers(dt) {
+            if (gameState === 'playing') {
+                updateBumperSpawning(dt);
+                // Track maximum depth for scaling bumper values
+                maxDepth = Math.max(maxDepth, pom.y);
+            }
+
+            // Update animations and remove off-screen bumpers
+            for (let i = bumpers.length - 1; i >= 0; i--) {
+                const bumper = bumpers[i];
+
+                // Update recoil animation
+                if (bumper.recoilTime > 0) {
+                    bumper.recoilTime = Math.max(0, bumper.recoilTime - dt);
+                }
+
+                // Update light animation
+                if (bumper.lightTime > 0) {
+                    bumper.lightTime = Math.max(0, bumper.lightTime - dt);
+                }
+
+                // Update jackpot pulse animation
+                if (bumper.isJackpot) {
+                    bumper.pulsePhase += dt * 3; // Pulse speed
+                }
+
+                // Remove bumpers that have scrolled off the TOP of the screen
+                const screenY = bumper.y - cameraY;
+                if (screenY < -bumper.radius * 2 - 100) {
+                    if (bumper.isJackpot) {
+                        hasActiveJackpot = false; // Allow new jackpot to spawn
+                    }
+                    bumpers.splice(i, 1);
+                }
+            }
+        }
+
+        function checkBumperCollisions() {
+            for (let i = bumpers.length - 1; i >= 0; i--) {
+                const bumper = bumpers[i];
+                // Calculate distance between centers
+                const dx = pom.x - bumper.x;
+                const dy = pom.y - bumper.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const minDist = pom.radius + bumper.radius;
+
+                if (distance < minDist && distance > 0) {
+                    // Collision detected - normalize direction vector
+                    const nx = dx / distance;
+                    const ny = dy / distance;
+
+                    // Apply velocity away from bumper center
+                    const bounceSpeed = BUMPER_BOUNCE_FORCE * scale * (1 + speedMultiplier * 0.2);
+                    pom.vx = nx * bounceSpeed;
+                    pom.vy = ny * bounceSpeed;
+
+                    // If on ramp, leave it
+                    if (pom.onRamp) {
+                        pom.onRamp.passed = true;
+                        pom.onRamp = null;
+                    }
+
+                    // Trigger bumper hit effects
+                    bumper.recoilTime = BUMPER_RECOIL_DURATION;
+                    bumper.lightTime = BUMPER_LIGHT_DURATION;
+
+                    // Increment combo counter (bumpers participate in combo system)
+                    comboCount++;
+                    const comboMultiplier = Math.min(comboCount, 10);
+
+                    // Handle jackpot vs regular bumper
+                    if (bumper.isJackpot) {
+                        // Jackpot bumper hit
+                        bumper.hitsRemaining--;
+                        const hitPoints = JACKPOT_BUMPER.pointsPerHit * comboMultiplier;
+                        bonusScore += hitPoints;
+
+                        if (bumper.hitsRemaining <= 0) {
+                            // JACKPOT! Final hit
+                            const jackpotBonus = JACKPOT_BUMPER.jackpotBonus;
+                            bonusScore += jackpotBonus;
+                            addFloatingText(bumper.x, bumper.y - bumper.radius - 40 * scale, '★ JACKPOT! ★');
+                            addFloatingText(bumper.x, bumper.y - bumper.radius - 20 * scale, `+${jackpotBonus}`);
+                            addFloatingText(bumper.x, bumper.y - bumper.radius, `+${hitPoints}`);
+                            // Remove the jackpot bumper
+                            hasActiveJackpot = false;
+                            bumpers.splice(i, 1);
+                        } else {
+                            // Shrink the jackpot bumper
+                            bumper.radius = bumper.baseRadius * (1 - JACKPOT_BUMPER.shrinkPerHit * (JACKPOT_BUMPER.maxHits - bumper.hitsRemaining));
+                            // Show hit and remaining
+                            if (comboCount >= 2) {
+                                addFloatingText(bumper.x, bumper.y - bumper.radius - 35 * scale, `${comboCount}x COMBO!`);
+                            }
+                            addFloatingText(bumper.x, bumper.y - bumper.radius - 20 * scale, `${bumper.hitsRemaining} LEFT!`);
+                            addFloatingText(bumper.x, bumper.y - bumper.radius, `+${hitPoints}`);
+                        }
+                    } else {
+                        // Regular bumper
+                        const totalPoints = bumper.points * comboMultiplier;
+                        bonusScore += totalPoints;
+
+                        // Show combo and points
+                        if (comboCount >= 2) {
+                            addFloatingText(bumper.x, bumper.y - bumper.radius - 20 * scale, `${comboCount}x COMBO!`);
+                        }
+                        addFloatingText(bumper.x, bumper.y - bumper.radius, `+${totalPoints}`);
+                    }
+
+                    // Push pomegranate outside bumper
+                    const overlap = minDist - distance;
+                    pom.x += nx * (overlap + 2);
+                    pom.y += ny * (overlap + 2);
+
+                    // Set fall tracking for combo continuation
+                    fallStartY = pom.y;
+                    isBouncing = true;
+
+                    break; // Only one collision per frame
                 }
             }
         }
@@ -498,6 +758,7 @@
 
             updatePomegranate(dt);
             updateRamps(dt);
+            updateBumpers(dt);
             updateFloatingTexts(dt);
         }
 
@@ -585,6 +846,191 @@
             ctx.moveTo(ramp.x1, y1 - RAMP_THICKNESS * scale * 0.3);
             ctx.lineTo(ramp.x2, y2 - RAMP_THICKNESS * scale * 0.3);
             ctx.stroke();
+
+            ctx.restore();
+        }
+
+        // Color helper functions
+        function lightenColor(hex, amount) {
+            const num = parseInt(hex.slice(1), 16);
+            const r = Math.min(255, ((num >> 16) & 0xFF) + 255 * amount);
+            const g = Math.min(255, ((num >> 8) & 0xFF) + 255 * amount);
+            const b = Math.min(255, (num & 0xFF) + 255 * amount);
+            return `rgb(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)})`;
+        }
+
+        function darkenColor(hex, amount) {
+            const num = parseInt(hex.slice(1), 16);
+            const r = ((num >> 16) & 0xFF) * (1 - amount);
+            const g = ((num >> 8) & 0xFF) * (1 - amount);
+            const b = (num & 0xFF) * (1 - amount);
+            return `rgb(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)})`;
+        }
+
+        function drawBumper(bumper) {
+            const screenY = bumper.y - cameraY;
+
+            // Skip if off-screen
+            if (screenY < -bumper.radius * 2 || screenY > height + bumper.radius * 2) {
+                return;
+            }
+
+            ctx.save();
+            ctx.translate(bumper.x, screenY);
+
+            // Calculate recoil scale (smooth sine pulse)
+            const recoilProgress = bumper.recoilTime / BUMPER_RECOIL_DURATION;
+            const recoilScale = 1 - (1 - BUMPER_RECOIL_SCALE) * Math.sin(recoilProgress * Math.PI);
+            ctx.scale(recoilScale, recoilScale);
+
+            // Jackpot bumper: pulsing glow effect (always on)
+            if (bumper.isJackpot) {
+                const pulseIntensity = 0.3 + 0.2 * Math.sin(bumper.pulsePhase);
+                ctx.globalAlpha = pulseIntensity;
+                ctx.shadowColor = '#FFD700';
+                ctx.shadowBlur = 25 * scale;
+                ctx.beginPath();
+                ctx.arc(0, 0, bumper.radius * 1.15, 0, Math.PI * 2);
+                ctx.fillStyle = '#FFD700';
+                ctx.fill();
+                ctx.globalAlpha = 1;
+                ctx.shadowBlur = 0;
+            }
+
+            // Light burst effect (when hit) - draw first so it's behind
+            if (bumper.lightTime > 0) {
+                const lightProgress = bumper.lightTime / BUMPER_LIGHT_DURATION;
+                ctx.globalAlpha = lightProgress * 0.6;
+                ctx.shadowColor = bumper.lightColor;
+                ctx.shadowBlur = (bumper.isJackpot ? 50 : 30) * scale * lightProgress;
+
+                // Expanding ring burst
+                const burstRadius = bumper.radius * (1.2 + (1 - lightProgress) * 0.5);
+                ctx.beginPath();
+                ctx.arc(0, 0, burstRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = bumper.lightColor;
+                ctx.lineWidth = (bumper.isJackpot ? 10 : 6) * scale * lightProgress;
+                ctx.stroke();
+
+                ctx.globalAlpha = 1;
+                ctx.shadowBlur = 0;
+            }
+
+            // Outer ring - gold for jackpot, chrome for regular
+            ctx.beginPath();
+            ctx.arc(0, 0, bumper.radius, 0, Math.PI * 2);
+            const ringGradient = ctx.createRadialGradient(
+                -bumper.radius * 0.3, -bumper.radius * 0.3, 0,
+                0, 0, bumper.radius
+            );
+            if (bumper.isJackpot) {
+                ringGradient.addColorStop(0, '#FFF8DC');
+                ringGradient.addColorStop(0.4, '#FFD700');
+                ringGradient.addColorStop(0.8, '#DAA520');
+                ringGradient.addColorStop(1, '#B8860B');
+            } else {
+                ringGradient.addColorStop(0, '#F0F0F0');
+                ringGradient.addColorStop(0.4, '#B0B0B0');
+                ringGradient.addColorStop(0.8, '#606060');
+                ringGradient.addColorStop(1, '#303030');
+            }
+            ctx.fillStyle = ringGradient;
+            ctx.fill();
+
+            // Decorative ring groove
+            ctx.beginPath();
+            ctx.arc(0, 0, bumper.radius * 0.88, 0, Math.PI * 2);
+            ctx.strokeStyle = bumper.isJackpot ? '#B8860B' : '#404040';
+            ctx.lineWidth = 2 * scale;
+            ctx.stroke();
+
+            // Inner colored cap
+            const capRadius = bumper.radius * 0.72;
+            ctx.beginPath();
+            ctx.arc(0, 0, capRadius, 0, Math.PI * 2);
+            const capGradient = ctx.createRadialGradient(
+                -capRadius * 0.3, -capRadius * 0.3, 0,
+                0, 0, capRadius
+            );
+            capGradient.addColorStop(0, lightenColor(bumper.baseColor, 0.4));
+            capGradient.addColorStop(0.4, bumper.baseColor);
+            capGradient.addColorStop(1, darkenColor(bumper.baseColor, 0.4));
+            ctx.fillStyle = capGradient;
+            ctx.fill();
+
+            // Inner ring on cap
+            ctx.beginPath();
+            ctx.arc(0, 0, capRadius * 0.75, 0, Math.PI * 2);
+            ctx.strokeStyle = darkenColor(bumper.baseColor, 0.2);
+            ctx.lineWidth = 2 * scale;
+            ctx.stroke();
+
+            // For jackpot: draw hit indicators (dots around edge)
+            if (bumper.isJackpot && bumper.hitsRemaining > 0) {
+                const dotRadius = 4 * scale;
+                for (let i = 0; i < bumper.hitsRemaining; i++) {
+                    const angle = (i / JACKPOT_BUMPER.maxHits) * Math.PI * 2 - Math.PI / 2;
+                    const dotX = Math.cos(angle) * bumper.radius * 0.82;
+                    const dotY = Math.sin(angle) * bumper.radius * 0.82;
+                    ctx.beginPath();
+                    ctx.arc(dotX, dotY, dotRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fill();
+                }
+            }
+
+            // Point value text
+            const fontSize = bumper.isJackpot ? bumper.radius * 0.4 : bumper.radius * 0.55;
+            ctx.font = `bold ${fontSize}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // Text shadow/outline for visibility
+            ctx.fillStyle = darkenColor(bumper.baseColor, 0.5);
+            const displayText = bumper.isJackpot ? '1000' : bumper.points;
+            ctx.fillText(displayText, 1 * scale, 1 * scale);
+
+            // Main text
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillText(displayText, 0, 0);
+
+            // Jackpot label below points
+            if (bumper.isJackpot) {
+                const labelSize = bumper.radius * 0.22;
+                ctx.font = `bold ${labelSize}px Arial`;
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillText('JACKPOT', 0, fontSize * 0.5);
+            }
+
+            // Highlight on hit
+            if (bumper.lightTime > 0) {
+                const lightProgress = bumper.lightTime / BUMPER_LIGHT_DURATION;
+                ctx.globalAlpha = lightProgress * 0.7;
+
+                // Bright flash on cap
+                ctx.beginPath();
+                ctx.arc(0, 0, capRadius, 0, Math.PI * 2);
+                ctx.fillStyle = bumper.lightColor;
+                ctx.fill();
+
+                // Re-draw text on top of flash
+                ctx.font = `bold ${fontSize}px Arial`;
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillText(displayText, 0, 0);
+                if (bumper.isJackpot) {
+                    const labelSize = bumper.radius * 0.22;
+                    ctx.font = `bold ${labelSize}px Arial`;
+                    ctx.fillText('JACKPOT', 0, fontSize * 0.5);
+                }
+
+                ctx.globalAlpha = 1;
+            }
+
+            // Top highlight reflection
+            ctx.beginPath();
+            ctx.arc(-bumper.radius * 0.25, -bumper.radius * 0.3, bumper.radius * 0.18, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.fill();
 
             ctx.restore();
         }
@@ -756,6 +1202,11 @@
             // Draw ramps
             for (const ramp of ramps) {
                 drawRamp(ramp);
+            }
+
+            // Draw bumpers (on top of ramps)
+            for (const bumper of bumpers) {
+                drawBumper(bumper);
             }
 
             // Draw pomegranate

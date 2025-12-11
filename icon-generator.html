@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Icon Generator</title>
+  <style>
+    body {
+      background: #808080;
+      padding: 20px;
+      font-family: sans-serif;
+    }
+    .icon-row {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    canvas {
+      border: 1px solid #333;
+    }
+    label {
+      color: white;
+      min-width: 120px;
+    }
+  </style>
+</head>
+<body>
+  <div class="icon-row">
+    <label>32x32 favicon</label>
+    <canvas id="icon-32" width="32" height="32"></canvas>
+  </div>
+  <div class="icon-row">
+    <label>180x180 apple</label>
+    <canvas id="icon-180" width="180" height="180"></canvas>
+  </div>
+  <div class="icon-row">
+    <label>192x192 PWA</label>
+    <canvas id="icon-192" width="192" height="192"></canvas>
+  </div>
+  <div class="icon-row">
+    <label>512x512 PWA</label>
+    <canvas id="icon-512" width="512" height="512"></canvas>
+  </div>
+
+  <script>
+    function drawPomegranate(ctx, size) {
+      const centerX = size / 2;
+      const centerY = size / 2 + size * 0.06; // Slightly lower to account for calyx
+      const radius = size * 0.42; // Larger - fills more of the space
+
+      // Fill with theme background color
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, size, size);
+
+      // Main body gradient
+      const gradient = ctx.createRadialGradient(
+        centerX - radius * 0.3, centerY - radius * 0.3, 0,
+        centerX, centerY, radius
+      );
+      gradient.addColorStop(0, '#c41e3a');
+      gradient.addColorStop(0.5, '#8b0000');
+      gradient.addColorStop(1, '#4a0000');
+
+      // Slightly irregular shape
+      ctx.beginPath();
+      for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2;
+        const staticWobble = 1 + Math.sin(i * 3) * 0.05;
+        const r = radius * staticWobble;
+        const x = centerX + Math.cos(angle) * r;
+        const y = centerY + Math.sin(angle) * r;
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.closePath();
+      ctx.fillStyle = gradient;
+      ctx.fill();
+
+      // Calyx (crown) on top - scale based on size
+      const calyxScale = size > 64 ? 1 : 0.8; // Smaller calyx for tiny icons
+      ctx.fillStyle = '#654321';
+      ctx.beginPath();
+      const calyxY = centerY - radius * 0.8;
+      const cw = radius * 0.25 * calyxScale;
+      const ch = radius * 0.35 * calyxScale;
+      ctx.moveTo(centerX - cw, calyxY);
+      ctx.lineTo(centerX - cw * 0.6, calyxY - ch);
+      ctx.lineTo(centerX, calyxY - ch * 0.7);
+      ctx.lineTo(centerX + cw * 0.6, calyxY - ch);
+      ctx.lineTo(centerX + cw, calyxY);
+      ctx.closePath();
+      ctx.fill();
+
+      // Highlight
+      ctx.beginPath();
+      ctx.arc(centerX - radius * 0.3, centerY - radius * 0.3, radius * 0.22, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.fill();
+    }
+
+    // Draw all sizes
+    const sizes = [32, 180, 192, 512];
+    sizes.forEach(size => {
+      const canvas = document.getElementById(`icon-${size}`);
+      const ctx = canvas.getContext('2d');
+      drawPomegranate(ctx, size);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1200, height=630">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 1200px;
+      height: 630px;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    .card {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f1a 100%);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Subtle grid lines for depth */
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 50px 50px;
+    }
+
+    /* Ramp 1 - behind pom, going right */
+    .ramp1 {
+      position: absolute;
+      width: 280px;
+      height: 16px;
+      background: linear-gradient(90deg, #8B7355, #A0896C, #8B7355);
+      border-radius: 8px;
+      top: 365px;
+      left: 80px;
+      transform: rotate(18deg);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+    }
+
+    /* Ramp 2 - lower right */
+    .ramp2 {
+      position: absolute;
+      width: 200px;
+      height: 14px;
+      background: linear-gradient(90deg, #8B7355, #A0896C, #8B7355);
+      border-radius: 7px;
+      top: 480px;
+      left: 500px;
+      transform: rotate(-22deg);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+    }
+
+    /* Ramp 3 - subtle in background */
+    .ramp3 {
+      position: absolute;
+      width: 160px;
+      height: 12px;
+      background: linear-gradient(90deg, #8B7355, #A0896C, #8B7355);
+      border-radius: 6px;
+      top: 200px;
+      left: 750px;
+      transform: rotate(12deg);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+      opacity: 0.6;
+    }
+
+    /* Ramp 4 - lower left area */
+    .ramp4 {
+      position: absolute;
+      width: 180px;
+      height: 14px;
+      background: linear-gradient(90deg, #8B7355, #A0896C, #8B7355);
+      border-radius: 7px;
+      top: 520px;
+      left: 150px;
+      transform: rotate(-15deg);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+    }
+
+    /* Ramp 5 - middle area */
+    .ramp5 {
+      position: absolute;
+      width: 140px;
+      height: 12px;
+      background: linear-gradient(90deg, #8B7355, #A0896C, #8B7355);
+      border-radius: 6px;
+      top: 450px;
+      left: 380px;
+      transform: rotate(25deg);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+      opacity: 0.8;
+    }
+
+    /* Bumper base styles */
+    .bumper {
+      position: absolute;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      color: white;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+    }
+
+    /* Bumper 1 - medium teal */
+    .bumper1 {
+      width: 90px;
+      height: 90px;
+      top: 380px;
+      left: 780px;
+      background: radial-gradient(circle at 30% 30%, #7EECD4, #4ECDC4 40%, #2A9D8F);
+      box-shadow:
+        0 0 20px rgba(78, 205, 196, 0.5),
+        inset 0 -4px 8px rgba(0,0,0,0.3),
+        inset 0 4px 8px rgba(255,255,255,0.2);
+      font-size: 24px;
+    }
+    .bumper1::before {
+      content: '';
+      position: absolute;
+      width: 70%;
+      height: 70%;
+      border-radius: 50%;
+      border: 3px solid rgba(255,255,255,0.3);
+    }
+
+    /* Bumper 2 - small pink */
+    .bumper2 {
+      width: 70px;
+      height: 70px;
+      top: 150px;
+      left: 940px;
+      background: radial-gradient(circle at 30% 30%, #FF9B9B, #FF6B6B 40%, #E74C3C);
+      box-shadow:
+        0 0 15px rgba(255, 107, 107, 0.5),
+        inset 0 -3px 6px rgba(0,0,0,0.3),
+        inset 0 3px 6px rgba(255,255,255,0.2);
+      font-size: 18px;
+    }
+    .bumper2::before {
+      content: '';
+      position: absolute;
+      width: 70%;
+      height: 70%;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.3);
+    }
+
+    /* Bumper 3 - large purple, partially visible */
+    .bumper3 {
+      width: 100px;
+      height: 100px;
+      top: 448px;
+      left: 1000px;
+      background: radial-gradient(circle at 30% 30%, #C39BD3, #9B59B6 40%, #7D3C98);
+      box-shadow:
+        0 0 25px rgba(155, 89, 182, 0.5),
+        inset 0 -5px 10px rgba(0,0,0,0.3),
+        inset 0 5px 10px rgba(255,255,255,0.2);
+      font-size: 28px;
+    }
+    .bumper3::before {
+      content: '';
+      position: absolute;
+      width: 70%;
+      height: 70%;
+      border-radius: 50%;
+      border: 3px solid rgba(255,255,255,0.3);
+    }
+
+    /* Floating score text */
+    .score-float {
+      position: absolute;
+      font-weight: bold;
+      text-shadow: 0 0 10px currentColor;
+    }
+    .score1 {
+      top: 300px;
+      left: 860px;
+      font-size: 32px;
+      color: #FFE66D;
+      transform: rotate(-8deg);
+      animation: float 2s ease-in-out infinite;
+    }
+    .score2 {
+      top: 360px;
+      left: 920px;
+      font-size: 24px;
+      color: #4ECDC4;
+      transform: rotate(5deg);
+    }
+
+    /* The Pomegranate - hero element */
+    .pom-container {
+      position: absolute;
+      top: 168px;
+      left: 142px;
+      width: 200px;
+      height: 200px;
+      transform: rotate(-15deg);
+    }
+
+    .pom {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    .pom-body {
+      width: 180px;
+      height: 180px;
+      background: radial-gradient(circle at 35% 35%, #c41e3a 0%, #8b0000 50%, #4a0000 100%);
+      border-radius: 50% 50% 50% 50% / 45% 45% 55% 55%;
+      position: absolute;
+      top: 20px;
+      left: 10px;
+      box-shadow:
+        0 10px 30px rgba(0,0,0,0.5),
+        inset -10px -10px 30px rgba(0,0,0,0.3);
+    }
+
+    /* Pom highlight */
+    .pom-body::before {
+      content: '';
+      position: absolute;
+      width: 50px;
+      height: 50px;
+      background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
+      border-radius: 50%;
+      top: 25px;
+      left: 30px;
+    }
+
+    /* Calyx (crown) */
+    .calyx {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+    }
+    .calyx::before {
+      content: '';
+      position: absolute;
+      width: 40px;
+      height: 25px;
+      background: #654321;
+      clip-path: polygon(20% 100%, 0% 30%, 25% 0%, 50% 20%, 75% 0%, 100% 30%, 80% 100%);
+      left: -20px;
+      top: 5px;
+    }
+
+    /* Title */
+    .title {
+      position: absolute;
+      top: 180px;
+      left: 380px;
+      color: white;
+      text-align: left;
+    }
+    .title h1 {
+      font-size: 84px;
+      font-weight: 800;
+      text-shadow:
+        3px 3px 0px rgba(196, 30, 58, 0.8),
+        6px 6px 20px rgba(0,0,0,0.5);
+      line-height: 1;
+      letter-spacing: -2px;
+    }
+    .title .tagline {
+      font-size: 36px;
+      color: rgba(255,255,255,0.85);
+      margin-top: 15px;
+      font-weight: 400;
+      text-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+    }
+
+    /* Domain */
+    .domain {
+      position: absolute;
+      bottom: 30px;
+      right: 40px;
+      color: rgba(255,255,255,0.6);
+      font-size: 22px;
+      font-weight: 300;
+    }
+
+    /* Motion lines behind pom - trailing to show rightward movement */
+    .motion-lines {
+      position: absolute;
+      top: 180px;
+      left: 30px;
+      width: 100px;
+      height: 200px;
+      opacity: 0.4;
+    }
+    .motion-line {
+      position: absolute;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent);
+      border-radius: 2px;
+    }
+    .motion-line:nth-child(1) { width: 60px; top: 40px; left: 0; }
+    .motion-line:nth-child(2) { width: 80px; top: 80px; left: 10px; }
+    .motion-line:nth-child(3) { width: 50px; top: 120px; left: 5px; }
+    .motion-line:nth-child(4) { width: 70px; top: 160px; left: 15px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <!-- Motion lines -->
+    <div class="motion-lines">
+      <div class="motion-line"></div>
+      <div class="motion-line"></div>
+      <div class="motion-line"></div>
+      <div class="motion-line"></div>
+    </div>
+
+    <!-- Ramps -->
+    <div class="ramp3"></div>
+    <div class="ramp1"></div>
+    <div class="ramp2"></div>
+    <div class="ramp4"></div>
+    <div class="ramp5"></div>
+
+    <!-- Pomegranate -->
+    <div class="pom-container">
+      <div class="pom">
+        <div class="calyx"></div>
+        <div class="pom-body"></div>
+      </div>
+    </div>
+
+    <!-- Bumpers -->
+    <div class="bumper bumper1">100</div>
+    <div class="bumper bumper2">50</div>
+    <div class="bumper bumper3">150</div>
+
+    <!-- Floating scores -->
+    <div class="score-float score1">+100</div>
+    <div class="score-float score2">COMBO!</div>
+
+    <!-- Title -->
+    <div class="title">
+      <h1>Pomegranate<br>Panic</h1>
+      <div class="tagline">A Pom's Wild Descent</div>
+    </div>
+
+    <!-- Domain -->
+    <div class="domain">zeveck.github.io/pomegranatepanic</div>
+  </div>
+</body>
+</html>

@@ -80,7 +80,7 @@
         const ctx = canvas.getContext('2d');
 
         // Version
-        const VERSION = 'v0.1.7';
+        const VERSION = 'v0.2.0';
 
         // Game constants
         const GRAVITY = 800; // Faster falling
@@ -127,6 +127,7 @@
         let speedMultiplier = 1;
         let gameTime = 0;
         let gameOverRotation = 0;
+        let gameOverFadeIn = 0; // 0-1 fade in for game over UI
         let cameraY = 0; // Vertical scroll offset
         let cameraVelocity = 0; // Smooth camera velocity
 
@@ -164,6 +165,15 @@
         let maxDepth = 0; // Maximum depth reached (for scaling bumper values)
         let lastJackpotSpawnTime = 0; // Game time when last jackpot spawned
         let hasActiveJackpot = false; // Only one jackpot at a time
+
+        // Hades fire state
+        let fireParticles = [];
+        let fireFlareIntensity = 0; // 0-1, increases on game over
+        let fallingIntoFire = false; // True when pom is falling into fire
+        let fireDeathTimer = 0; // Time spent in fire death animation
+        const FIRE_HEIGHT = 120; // Height of fire zone in pixels
+        const FIRE_PARTICLE_COUNT = 60; // Base number of fire particles
+        const FIRE_DEATH_DURATION = 0.8; // Seconds to show fire flare before game over
 
         // Screen dimensions (will be set on resize)
         let width, height, scale;
@@ -218,6 +228,7 @@
             bonusScore = 0;
             speedMultiplier = 1;
             gameTime = 0;
+            gameOverFadeIn = 0;
             ramps = [];
 
             // Create starting ramp slightly left of center
@@ -265,6 +276,38 @@
             maxDepth = 0;
             lastJackpotSpawnTime = 0;
             hasActiveJackpot = false;
+
+            // Initialize fire particles
+            fireParticles = [];
+            fireFlareIntensity = 0;
+            fallingIntoFire = false;
+            fireDeathTimer = 0;
+            initFireParticles();
+        }
+
+        // Initialize Hades fire particles
+        function initFireParticles() {
+            fireParticles = [];
+            for (let i = 0; i < FIRE_PARTICLE_COUNT; i++) {
+                fireParticles.push(createFireParticle(Math.random() * width));
+            }
+        }
+
+        // Create a single fire particle
+        function createFireParticle(x) {
+            const baseHeight = FIRE_HEIGHT * scale;
+            return {
+                x: x,
+                y: 0, // Relative to fire base (bottom of screen)
+                baseX: x, // Original x for wave motion
+                vx: (Math.random() - 0.5) * 20,
+                vy: -Math.random() * 80 - 40, // Upward velocity
+                size: Math.random() * 25 + 15,
+                maxHeight: Math.random() * baseHeight * 0.8 + baseHeight * 0.4,
+                life: Math.random(), // 0-1 phase offset for animation
+                speed: Math.random() * 0.5 + 0.5, // Animation speed multiplier
+                hue: Math.random() * 40 // 0-40 for red-orange-yellow range
+            };
         }
 
         function placeRamp(x, y) {
@@ -459,7 +502,18 @@
                 } // end if (!isBouncing)
 
                 // Game over check - pom fell below visible screen
-                if (pom.y - pom.radius - cameraY > height) {
+                if (pom.y - pom.radius - cameraY > height && !fallingIntoFire) {
+                    fallingIntoFire = true;
+                    fireDeathTimer = 0;
+                }
+            }
+
+            // Handle fire death animation
+            if (fallingIntoFire && gameState === 'playing') {
+                fireDeathTimer += dt;
+                fireFlareIntensity = Math.min(1, fireDeathTimer / (FIRE_DEATH_DURATION * 0.5));
+
+                if (fireDeathTimer >= FIRE_DEATH_DURATION) {
                     gameState = 'gameover';
                 }
             }
@@ -788,12 +842,58 @@
                 }
             } else if (gameState === 'gameover') {
                 gameOverRotation += dt; // Rotate 1 radian per second
+                gameOverFadeIn = Math.min(1, gameOverFadeIn + dt * 1.5); // Fade in over ~0.7 seconds
             }
 
             updatePomegranate(dt);
             updateRamps(dt);
             updateBumpers(dt);
             updateFloatingTexts(dt);
+            updateFire(dt);
+        }
+
+        // Update Hades fire effect
+        function updateFire(dt) {
+            const time = gameTime;
+
+            // Update flare intensity (ramps up on game over)
+            if (gameState === 'gameover') {
+                fireFlareIntensity = Math.min(1, fireFlareIntensity + dt * 3);
+            } else {
+                fireFlareIntensity = Math.max(0, fireFlareIntensity - dt * 2);
+            }
+
+            // Update each fire particle
+            for (let i = 0; i < fireParticles.length; i++) {
+                const p = fireParticles[i];
+
+                // Animate life cycle
+                p.life += dt * p.speed * (1 + fireFlareIntensity);
+                if (p.life > 1) p.life -= 1;
+
+                // Calculate current height based on life cycle (rises then falls)
+                const cycle = Math.sin(p.life * Math.PI);
+                p.y = cycle * p.maxHeight * (1 + fireFlareIntensity * 0.8);
+
+                // Horizontal wave motion
+                p.x = p.baseX + Math.sin(time * 3 + p.baseX * 0.01) * 15;
+
+                // Reset particles that drift too far
+                if (p.baseX < -50 || p.baseX > width + 50) {
+                    p.baseX = Math.random() * width;
+                    p.x = p.baseX;
+                }
+            }
+
+            // Spawn extra particles during flare
+            if (fireFlareIntensity > 0.5 && Math.random() < fireFlareIntensity * 0.3) {
+                fireParticles.push(createFireParticle(Math.random() * width));
+            }
+
+            // Remove excess particles when not flaring
+            if (fireFlareIntensity < 0.1 && fireParticles.length > FIRE_PARTICLE_COUNT) {
+                fireParticles.splice(FIRE_PARTICLE_COUNT);
+            }
         }
 
         function drawPomegranate() {
@@ -1194,17 +1294,21 @@
         }
 
         function drawGameOver() {
-            // Darken background
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            const fade = gameOverFadeIn;
+
+            // Darken background (fades in)
+            ctx.fillStyle = `rgba(0, 0, 0, ${0.7 * fade})`;
             ctx.fillRect(0, 0, width, height);
 
-            // Draw the pomegranate in the center, slowly rotating
+            // Draw the pomegranate in the center, slowly rotating (fades in)
+            ctx.globalAlpha = fade;
             const pomY = height / 2 - 80 * scale;
             const pomRadius = 40 * scale;
             drawPomegranateAt(width / 2, pomY, pomRadius, gameOverRotation);
+            ctx.globalAlpha = 1;
 
-            // Game over text
-            ctx.fillStyle = '#fff';
+            // Game over text (fades in)
+            ctx.fillStyle = `rgba(255, 255, 255, ${fade})`;
             ctx.font = `bold ${48 * scale}px Arial`;
             ctx.textAlign = 'center';
             ctx.fillText('GAME OVER', width / 2, height / 2 + 20 * scale);
@@ -1213,8 +1317,87 @@
             ctx.fillText(`Score: ${score}`, width / 2, height / 2 + 70 * scale);
 
             ctx.font = `${20 * scale}px Arial`;
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.8 * fade})`;
             ctx.fillText('Tap to restart', width / 2, height / 2 + 120 * scale);
+        }
+
+        // Draw Hades fire effect at the bottom of the screen
+        function drawFire() {
+            const baseY = height;
+            const intensity = 1 + fireFlareIntensity * 0.5;
+
+            // Draw base glow using smooth exponential decay (no banding)
+            const glowGradient = ctx.createLinearGradient(0, baseY, 0, 0);
+            // Use many stops with smooth exponential-like decay to avoid banding
+            const glowStops = 20;
+            for (let i = 0; i <= glowStops; i++) {
+                const t = i / glowStops;
+                // Exponential decay: opacity drops smoothly from 0.8 to near 0
+                const opacity = 0.8 * Math.pow(1 - t, 2.5) * intensity;
+                // Color shifts from bright orange-red at base to dark red at top
+                const r = Math.round(200 - t * 160);
+                const g = Math.round(50 - t * 45);
+                const b = Math.round(10 - t * 10);
+                glowGradient.addColorStop(t, `rgba(${r}, ${g}, ${b}, ${opacity})`);
+            }
+            ctx.fillStyle = glowGradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // Sort particles by size for layering (smaller = background)
+            const sortedParticles = [...fireParticles].sort((a, b) => a.size - b.size);
+
+            // Draw each flame particle
+            for (const p of sortedParticles) {
+                const flameHeight = p.y * intensity;
+                if (flameHeight < 5) continue; // Skip tiny flames
+
+                ctx.save();
+                ctx.translate(p.x, baseY);
+
+                // Create flame gradient (white core -> yellow -> orange -> red -> transparent)
+                const gradient = ctx.createLinearGradient(0, 0, 0, -flameHeight);
+                const hue = p.hue + fireFlareIntensity * 10; // Shift yellower during flare
+
+                gradient.addColorStop(0, `hsla(${hue}, 100%, 90%, 1)`); // White-ish core
+                gradient.addColorStop(0.15, `hsla(${hue + 10}, 100%, 60%, 0.95)`); // Yellow
+                gradient.addColorStop(0.4, `hsla(${hue}, 100%, 50%, 0.85)`); // Orange
+                gradient.addColorStop(0.7, `hsla(${Math.max(0, hue - 20)}, 100%, 40%, 0.6)`); // Red
+                gradient.addColorStop(1, 'transparent');
+
+                // Draw flame shape using clip-path simulation with path
+                ctx.beginPath();
+                const w = p.size * (0.8 + fireFlareIntensity * 0.3);
+                ctx.moveTo(0, -flameHeight); // Top point
+                ctx.quadraticCurveTo(-w * 0.4, -flameHeight * 0.6, -w * 0.5, -flameHeight * 0.3);
+                ctx.quadraticCurveTo(-w * 0.6, 0, 0, 0); // Left curve to bottom
+                ctx.quadraticCurveTo(w * 0.6, 0, w * 0.5, -flameHeight * 0.3);
+                ctx.quadraticCurveTo(w * 0.4, -flameHeight * 0.6, 0, -flameHeight); // Right curve to top
+                ctx.closePath();
+
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            // Add extra glow effect during flare (smooth exponential decay)
+            if (fireFlareIntensity > 0.2) {
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                const flareGradient = ctx.createLinearGradient(0, baseY, 0, 0);
+                // Smooth exponential decay for flare glow
+                const flareStops = 15;
+                for (let i = 0; i <= flareStops; i++) {
+                    const t = i / flareStops;
+                    const opacity = fireFlareIntensity * 0.2 * Math.pow(1 - t, 3);
+                    const r = Math.round(255 - t * 55);
+                    const g = Math.round(100 - t * 60);
+                    flareGradient.addColorStop(t, `rgba(${r}, ${g}, 0, ${opacity})`);
+                }
+                ctx.fillStyle = flareGradient;
+                ctx.fillRect(0, 0, width, height);
+                ctx.restore();
+            }
         }
 
         function draw() {
@@ -1250,6 +1433,11 @@
 
             // Draw floating bonus texts
             drawFloatingTexts();
+
+            // Draw Hades fire during falling animation and game over
+            if (fallingIntoFire || gameState === 'gameover') {
+                drawFire();
+            }
 
             // UI
             drawScore();

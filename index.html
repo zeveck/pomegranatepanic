@@ -80,7 +80,7 @@
         const ctx = canvas.getContext('2d');
 
         // Version
-        const VERSION = 'v0.2.0';
+        const VERSION = 'v0.2.1';
 
         // Game constants
         const GRAVITY = 800; // Faster falling
@@ -1172,9 +1172,16 @@
         function drawNextRampPreview() {
             if (!nextRamp) return;
 
+            // Fade out during game over transition
+            const fadeOut = gameState === 'gameover' || fallingIntoFire ? 1 - gameOverFadeIn : 1;
+            if (fadeOut <= 0) return;
+
             const previewX = width - 60 * scale;
             const previewY = height - 60 * scale;
             const previewScale = 0.4;
+
+            ctx.save();
+            ctx.globalAlpha = fadeOut;
 
             // Background
             ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
@@ -1200,6 +1207,8 @@
             ctx.moveTo(previewX - Math.cos(rad) * len / 2, previewY - Math.sin(rad) * len / 2);
             ctx.lineTo(previewX + Math.cos(rad) * len / 2, previewY + Math.sin(rad) * len / 2);
             ctx.stroke();
+
+            ctx.restore();
         }
 
         function drawGhostRamp() {

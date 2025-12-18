@@ -80,7 +80,7 @@
         const ctx = canvas.getContext('2d');
 
         // Version
-        const VERSION = 'v0.3.0';
+        const VERSION = 'v0.3.1';
 
         // Game constants
         const GRAVITY = 800; // Faster falling
@@ -416,9 +416,11 @@
                 pom.y += pom.vy * dt;
                 pom.rotation += pom.vx / pom.radius * dt;
 
-                // Clear bouncing flag once we start falling again
+                // Clear bouncing flag once we start falling again (at apex)
+                // Update fallStartY to apex position so fall distance is measured from highest point
                 if (isBouncing && pom.vy > 0) {
                     isBouncing = false;
+                    fallStartY = pom.y;
                 }
 
                 // Wall collisions

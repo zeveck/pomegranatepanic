@@ -80,7 +80,7 @@
         const ctx = canvas.getContext('2d');
 
         // Version
-        const VERSION = 'v0.2.1';
+        const VERSION = 'v0.3.0';
 
         // Game constants
         const GRAVITY = 800; // Faster falling
@@ -174,6 +174,16 @@
         const FIRE_HEIGHT = 120; // Height of fire zone in pixels
         const FIRE_PARTICLE_COUNT = 60; // Base number of fire particles
         const FIRE_DEATH_DURATION = 0.8; // Seconds to show fire flare before game over
+
+        // Seed collection state
+        let seeds = [];                    // Active seeds on screen
+        let collectedSeeds = 0;            // 0-6 seeds collected
+        let seedSpawnTimer = 0;            // Time since last seed spawn
+        let totalSeedsSpawned = 0;         // Track total spawned (max 6)
+        let isGoldenPom = false;           // True when all 6 collected
+        const SEED_SPAWN_INTERVAL = 30;    // Seconds between seed spawns
+        const MAX_SEEDS = 6;               // Maximum seeds per game
+        const SEED_COLLECT_RADIUS = 25;    // Collision radius for collection
 
         // Screen dimensions (will be set on resize)
         let width, height, scale;
@@ -276,6 +286,13 @@
             maxDepth = 0;
             lastJackpotSpawnTime = 0;
             hasActiveJackpot = false;
+
+            // Reset seeds
+            seeds = [];
+            collectedSeeds = 0;
+            seedSpawnTimer = 0;
+            totalSeedsSpawned = 0;
+            isGoldenPom = false;
 
             // Initialize fire particles
             fireParticles = [];
@@ -458,7 +475,7 @@
 
                                     // Award bonus points with combo multiplier
                                     const basePoints = Math.floor((fallDistance - bounceThreshold) / (2 * scale));
-                                    const bonusPoints = basePoints * comboMultiplier;
+                                    const bonusPoints = basePoints * comboMultiplier * (isGoldenPom ? 2 : 1);
                                     if (bonusPoints > 0) {
                                         bonusScore += bonusPoints;
                                         if (comboCount >= 2) {
@@ -697,12 +714,12 @@
                     if (bumper.isJackpot) {
                         // Jackpot bumper hit
                         bumper.hitsRemaining--;
-                        const hitPoints = JACKPOT_BUMPER.pointsPerHit * comboMultiplier;
+                        const hitPoints = JACKPOT_BUMPER.pointsPerHit * comboMultiplier * (isGoldenPom ? 2 : 1);
                         bonusScore += hitPoints;
 
                         if (bumper.hitsRemaining <= 0) {
                             // JACKPOT! Final hit
-                            const jackpotBonus = JACKPOT_BUMPER.jackpotBonus;
+                            const jackpotBonus = JACKPOT_BUMPER.jackpotBonus * (isGoldenPom ? 2 : 1);
                             bonusScore += jackpotBonus;
                             addFloatingText(bumper.x, bumper.y - bumper.radius - 40 * scale, '★ JACKPOT! ★');
                             addFloatingText(bumper.x, bumper.y - bumper.radius - 20 * scale, `+${jackpotBonus}`);
@@ -722,7 +739,7 @@
                         }
                     } else {
                         // Regular bumper
-                        const totalPoints = bumper.points * comboMultiplier;
+                        const totalPoints = bumper.points * comboMultiplier * (isGoldenPom ? 2 : 1);
                         bonusScore += totalPoints;
 
                         // Show combo and points
@@ -746,6 +763,132 @@
             }
         }
 
+        // Seed spawning and collection
+        function spawnSeed() {
+            if (totalSeedsSpawned >= MAX_SEEDS) return;
+
+            // Spawn below current camera view, in the upcoming area
+            const spawnY = cameraY + height + 100 + Math.random() * 200;
+            const margin = 80 * scale;
+            const spawnX = margin + Math.random() * (width - margin * 2);
+
+            // Check distance from existing bumpers (don't overlap)
+            for (const bumper of bumpers) {
+                const dx = spawnX - bumper.x;
+                const dy = spawnY - bumper.y;
+                if (Math.sqrt(dx * dx + dy * dy) < bumper.radius + 60 * scale) {
+                    // Too close to bumper, skip this spawn attempt
+                    return;
+                }
+            }
+
+            seeds.push({
+                x: spawnX,
+                y: spawnY,
+                pulsePhase: Math.random() * Math.PI * 2,
+                collected: false
+            });
+
+            totalSeedsSpawned++;
+        }
+
+        function updateSeedSpawning(dt) {
+            if (totalSeedsSpawned >= MAX_SEEDS || gameState !== 'playing') return;
+
+            seedSpawnTimer += dt;
+
+            if (seedSpawnTimer >= SEED_SPAWN_INTERVAL) {
+                seedSpawnTimer = 0;
+                spawnSeed();
+            }
+        }
+
+        function updateSeeds(dt) {
+            // Update pulse animation for all seeds
+            for (const seed of seeds) {
+                seed.pulsePhase += dt * 4;
+            }
+
+            // Remove seeds that have scrolled off the top of the screen
+            for (let i = seeds.length - 1; i >= 0; i--) {
+                const seed = seeds[i];
+                if (seed.y < cameraY - 100) {
+                    seeds.splice(i, 1);
+                }
+            }
+        }
+
+        function checkSeedCollisions() {
+            if (gameState !== 'playing') return;
+
+            for (let i = seeds.length - 1; i >= 0; i--) {
+                const seed = seeds[i];
+                if (seed.collected) continue;
+
+                const dx = pom.x - seed.x;
+                const dy = pom.y - seed.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < pom.radius + SEED_COLLECT_RADIUS * scale) {
+                    collectSeed(seed, i);
+                }
+            }
+        }
+
+        function collectSeed(seed, index) {
+            collectedSeeds++;
+            seed.collected = true;
+
+            // Scaling bonus: 1000, 2000, 3000, 4000, 5000, 6000
+            const seedBonus = collectedSeeds * 1000 * (isGoldenPom ? 2 : 1);
+            bonusScore += seedBonus;
+
+            // Speed boost: +1x per seed collected
+            speedMultiplier += 1;
+
+            // Visual feedback - floating text showing progress and points
+            const screenY = seed.y - cameraY;
+            addFloatingText(seed.x, screenY - 40, `SEED ${collectedSeeds}/6`);
+            addFloatingText(seed.x, screenY - 20, `+${seedBonus}`);
+            addFloatingText(seed.x, screenY, '+1x SPEED!');
+
+            // Create sparkle burst effect
+            createSeedCollectEffect(seed.x, screenY);
+
+            // Remove the seed
+            seeds.splice(index, 1);
+
+            // Check for golden transformation
+            if (collectedSeeds >= MAX_SEEDS) {
+                activateGoldenPom();
+            }
+        }
+
+        function createSeedCollectEffect(x, y) {
+            // Sparkle burst - 12 particles radiating outward
+            for (let i = 0; i < 12; i++) {
+                const angle = (i / 12) * Math.PI * 2;
+                const speed = 80 + Math.random() * 40;
+                floatingTexts.push({
+                    x: x,
+                    y: y,
+                    text: '✦',  // Sparkle character
+                    age: 0,
+                    maxAge: 0.6,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 30
+                });
+            }
+        }
+
+        function activateGoldenPom() {
+            isGoldenPom = true;
+
+            // Big celebratory floating texts
+            addFloatingText(pom.x, pom.y - cameraY - 60, 'GOLDEN POM!');
+            addFloatingText(pom.x, pom.y - cameraY - 30, '2x POINTS!');
+        }
+
         // Floating text functions for bonus points display
         function addFloatingText(x, y, text) {
             floatingTexts.push({
@@ -761,7 +904,19 @@
             for (let i = floatingTexts.length - 1; i >= 0; i--) {
                 const ft = floatingTexts[i];
                 ft.age += dt;
-                ft.y -= 60 * scale * dt; // Float upward
+                
+                // Support custom velocity or default float upward
+                if (ft.vx !== undefined || ft.vy !== undefined) {
+                    ft.x += (ft.vx || 0) * dt;
+                    ft.y += (ft.vy || 0) * dt;
+                    // Apply gravity to particles
+                    if (ft.vy !== undefined) {
+                        ft.vy += 200 * dt;
+                    }
+                } else {
+                    ft.y -= 60 * scale * dt; // Float upward
+                }
+                
                 if (ft.age >= ft.maxAge) {
                     floatingTexts.splice(i, 1);
                 }
@@ -848,6 +1003,9 @@
             updatePomegranate(dt);
             updateRamps(dt);
             updateBumpers(dt);
+            updateSeedSpawning(dt);
+            updateSeeds(dt);
+            checkSeedCollisions();
             updateFloatingTexts(dt);
             updateFire(dt);
         }
@@ -905,11 +1063,24 @@
             const squash = 1 + (pom.nibBump || 0) * 0.08;
             ctx.scale(1 / squash, squash);
 
-            // Main body - deep red/burgundy with gradient
+            // Golden glow effect when golden
+            if (isGoldenPom) {
+                const pulseIntensity = 0.6 + 0.3 * Math.sin(gameTime * 5);
+                ctx.shadowColor = '#FFD700';
+                ctx.shadowBlur = 25 * scale * pulseIntensity;
+            }
+
+            // Main body gradient - golden or red depending on state
             const gradient = ctx.createRadialGradient(-pom.radius * 0.3, -pom.radius * 0.3, 0, 0, 0, pom.radius);
-            gradient.addColorStop(0, '#c41e3a');
-            gradient.addColorStop(0.5, '#8b0000');
-            gradient.addColorStop(1, '#4a0000');
+            if (isGoldenPom) {
+                gradient.addColorStop(0, '#FFE066');   // Bright gold highlight
+                gradient.addColorStop(0.5, '#FFD700'); // Gold
+                gradient.addColorStop(1, '#B8860B');   // Dark gold
+            } else {
+                gradient.addColorStop(0, '#c41e3a');
+                gradient.addColorStop(0.5, '#8b0000');
+                gradient.addColorStop(1, '#4a0000');
+            }
 
             // Slightly irregular shape (static only - no dynamic wobble)
             ctx.beginPath();
@@ -927,8 +1098,12 @@
             ctx.fillStyle = gradient;
             ctx.fill();
 
-            // Calyx (crown) on top
-            ctx.fillStyle = '#654321';
+            // Reset shadow for other elements
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+
+            // Calyx (crown) on top - golden if golden pom
+            ctx.fillStyle = isGoldenPom ? '#8B7355' : '#654321';
             ctx.beginPath();
             const calyxY = -pom.radius * 0.8;
             ctx.moveTo(-pom.radius * 0.25, calyxY);
@@ -1169,6 +1344,84 @@
             ctx.restore();
         }
 
+        // Draw a collectible pomegranate seed
+        function drawSeed(x, y, pulse = 0) {
+            ctx.save();
+            ctx.translate(x, y);
+
+            // Pulsing glow effect (to make it noticeable)
+            const glowRadius = 25 * scale * (1 + pulse * 0.3);
+            const glowGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, glowRadius);
+            glowGradient.addColorStop(0, 'rgba(255, 100, 150, 0.5)');
+            glowGradient.addColorStop(0.5, 'rgba(255, 50, 100, 0.2)');
+            glowGradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = glowGradient;
+            ctx.beginPath();
+            ctx.arc(0, 0, glowRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Seed body - teardrop shape
+            const seedHeight = 18 * scale;
+            const seedWidth = 12 * scale;
+
+            // Create gradient for jewel-like appearance
+            const bodyGradient = ctx.createRadialGradient(
+                -seedWidth * 0.2, -seedHeight * 0.2, 0,
+                0, 0, seedHeight * 0.7
+            );
+            bodyGradient.addColorStop(0, '#ff6b8a');   // Light pink highlight
+            bodyGradient.addColorStop(0.3, '#dc143c'); // Crimson
+            bodyGradient.addColorStop(0.7, '#8b0a1a'); // Dark ruby
+            bodyGradient.addColorStop(1, '#4a0010');   // Deep shadow
+
+            // Draw teardrop shape
+            ctx.beginPath();
+            ctx.moveTo(0, -seedHeight * 0.5);  // Top
+            ctx.bezierCurveTo(
+                seedWidth * 0.6, -seedHeight * 0.3,
+                seedWidth * 0.5, seedHeight * 0.3,
+                0, seedHeight * 0.5
+            );
+            ctx.bezierCurveTo(
+                -seedWidth * 0.5, seedHeight * 0.3,
+                -seedWidth * 0.6, -seedHeight * 0.3,
+                0, -seedHeight * 0.5
+            );
+            ctx.fillStyle = bodyGradient;
+            ctx.fill();
+
+            // Glossy highlight
+            ctx.beginPath();
+            ctx.ellipse(-seedWidth * 0.15, -seedHeight * 0.2, seedWidth * 0.25, seedHeight * 0.18, -0.3, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // Draw mini seed for UI progress display
+        function drawMiniSeed(x, y, size, filled) {
+            ctx.save();
+            ctx.translate(x, y);
+
+            // Simplified teardrop for small display
+            ctx.beginPath();
+            ctx.moveTo(0, -size * 0.5);
+            ctx.bezierCurveTo(size * 0.5, -size * 0.3, size * 0.4, size * 0.3, 0, size * 0.5);
+            ctx.bezierCurveTo(-size * 0.4, size * 0.3, -size * 0.5, -size * 0.3, 0, -size * 0.5);
+
+            if (filled) {
+                ctx.fillStyle = isGoldenPom ? '#FFD700' : '#dc143c';
+                ctx.fill();
+            } else {
+                ctx.strokeStyle = 'rgba(220, 20, 60, 0.5)';
+                ctx.lineWidth = 1.5 * scale;
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
         function drawNextRampPreview() {
             if (!nextRamp) return;
 
@@ -1245,6 +1498,45 @@
             ctx.font = `${14 * scale}px Arial`;
             ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
             ctx.fillText(`Speed: ${speedMultiplier.toFixed(1)}x`, 20 * scale, 60 * scale);
+        }
+
+        function drawSeedProgress() {
+            const startX = 20 * scale;
+            const startY = 82 * scale;
+            const seedSize = 10 * scale;
+            const spacing = 18 * scale;
+
+            ctx.font = `${14 * scale}px Arial`;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.textAlign = 'left';
+            ctx.fillText('Seeds:', startX, startY);
+
+            // Draw 6 seed indicators
+            for (let i = 0; i < MAX_SEEDS; i++) {
+                const x = startX + 55 * scale + i * spacing;
+                const y = startY - seedSize * 0.3;
+
+                if (i < collectedSeeds) {
+                    // Collected - draw filled seed
+                    drawMiniSeed(x, y, seedSize, true);
+                } else if (i < totalSeedsSpawned) {
+                    // Spawned but not collected - draw outline
+                    drawMiniSeed(x, y, seedSize, false);
+                } else {
+                    // Not yet spawned - draw dim placeholder circle
+                    ctx.beginPath();
+                    ctx.arc(x, y, seedSize * 0.4, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+                    ctx.fill();
+                }
+            }
+
+            // Show golden indicator if achieved
+            if (isGoldenPom) {
+                ctx.font = `bold ${12 * scale}px Arial`;
+                ctx.fillStyle = '#FFD700';
+                ctx.fillText('2x GOLDEN!', startX, startY + 18 * scale);
+            }
         }
 
         function drawVersion() {
@@ -1435,6 +1727,15 @@
                 drawBumper(bumper);
             }
 
+            // Draw seeds
+            for (const seed of seeds) {
+                const screenY = seed.y - cameraY;
+                if (screenY > -50 && screenY < height + 50) {
+                    const pulse = Math.sin(seed.pulsePhase) * 0.5 + 0.5;
+                    drawSeed(seed.x, screenY, pulse);
+                }
+            }
+
             // Draw pomegranate
             if (gameState === 'playing') {
                 drawPomegranate();
@@ -1450,6 +1751,7 @@
 
             // UI
             drawScore();
+            drawSeedProgress();
             drawVersion();
             drawNextRampPreview();
 
@@ -1492,6 +1794,25 @@
 
         canvas.addEventListener('mousedown', (e) => {
             handleInput(e.clientX, e.clientY);
+        });
+
+        // Cheat key for playtesting: P to collect next seed
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'p' || e.key === 'P') {
+                if (gameState === 'playing' && collectedSeeds < MAX_SEEDS) {
+                    // Create a fake seed at pom position and collect it
+                    const fakeSeed = {
+                        x: pom.x,
+                        y: pom.y,
+                        pulsePhase: 0,
+                        collected: false
+                    };
+                    collectSeed(fakeSeed, -1); // -1 index since it's not in the array
+                    if (totalSeedsSpawned < MAX_SEEDS) {
+                        totalSeedsSpawned++; // Count it as spawned too
+                    }
+                }
+            }
         });
 
         canvas.addEventListener('mousemove', (e) => {

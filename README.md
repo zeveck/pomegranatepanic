@@ -2,7 +2,7 @@
 
 A mobile-first HTML5 game where you place ramps to keep a rolling pomegranate from falling off the screen.
 
-**[Play it now!](https://zeveck.github.io/pomegranatepanic)**
+**[Play it now!](https://pomegranatepanic.synapticnoise.com/)**
 
 ![Pomegranate Panic gameplay](screenshot.png)
 
@@ -42,4 +42,4 @@ Then visit `http://localhost:8080`
 
 ## Version
 
-v0.3.1
+v0.3.2

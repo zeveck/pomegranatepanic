@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://zeveck.github.io/pomegranatepanic/sitemap.xml
+Sitemap: https://pomegranatepanic.synapticnoise.com/sitemap.xml

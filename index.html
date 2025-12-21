@@ -80,7 +80,7 @@
         const ctx = canvas.getContext('2d');
 
         // Version
-        const VERSION = 'v0.3.2';
+        const VERSION = 'v0.3.3';
 
         // Game constants
         const GRAVITY = 800; // Faster falling
@@ -121,13 +121,20 @@
         const DEPTH_VALUE_SCALE = 2000; // Every 2000px depth doubles bumper value
 
         // Game state
-        let gameState = 'playing'; // 'playing', 'gameover'
+        let gameState = 'title'; // 'title', 'playing', 'gameover'
         let score = 0;
         let bonusScore = 0; // Accumulated bonus points from bounces
         let speedMultiplier = 1;
         let gameTime = 0;
         let gameOverRotation = 0;
         let gameOverFadeIn = 0; // 0-1 fade in for game over UI
+        let titlePomRotation = 0; // Rotation for title screen pomegranate
+
+        // Button definitions (will be set on resize)
+        let buttons = {
+            start: { x: 0, y: 0, width: 0, height: 0 },
+            playAgain: { x: 0, y: 0, width: 0, height: 0 }
+        };
         let cameraY = 0; // Vertical scroll offset
         let cameraVelocity = 0; // Smooth camera velocity
 
@@ -1596,6 +1603,147 @@
             ctx.restore();
         }
 
+        // Button utility functions
+        function drawButton(text, x, y, w, h, fade = 1) {
+            ctx.save();
+            ctx.globalAlpha = fade;
+
+            // Button background with gradient
+            const gradient = ctx.createLinearGradient(x, y, x, y + h);
+            gradient.addColorStop(0, '#c41e3a');
+            gradient.addColorStop(0.5, '#8b0000');
+            gradient.addColorStop(1, '#4a0000');
+
+            // Shadow
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 10 * scale;
+            ctx.shadowOffsetY = 4 * scale;
+
+            // Rounded rectangle
+            ctx.beginPath();
+            ctx.roundRect(x, y, w, h, 12 * scale);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // Border highlight
+            ctx.shadowColor = 'transparent';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 2 * scale;
+            ctx.stroke();
+
+            // Button text
+            ctx.fillStyle = '#fff';
+            ctx.font = `bold ${24 * scale}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, x + w / 2, y + h / 2);
+
+            ctx.restore();
+
+            return { x, y, width: w, height: h };
+        }
+
+        function isPointInButton(px, py, button) {
+            return px >= button.x && px <= button.x + button.width &&
+                   py >= button.y && py <= button.y + button.height;
+        }
+
+        function drawTitleScreen() {
+            // Background gradient (same as game)
+            const bgGradient = ctx.createLinearGradient(0, 0, 0, height);
+            bgGradient.addColorStop(0, '#1a1a2e');
+            bgGradient.addColorStop(1, '#16213e');
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // Subtle grid pattern
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.lineWidth = 1;
+            const gridSize = 50 * scale;
+            for (let x = 0; x < width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+
+            // Draw decorative ramps in background
+            ctx.save();
+            ctx.globalAlpha = 0.4;
+            ctx.strokeStyle = '#A0896C';
+            ctx.lineWidth = RAMP_THICKNESS * scale * 0.8;
+            ctx.lineCap = 'round';
+
+            // Ramp 1 - upper left
+            ctx.beginPath();
+            ctx.moveTo(width * 0.05, height * 0.25);
+            ctx.lineTo(width * 0.2, height * 0.32);
+            ctx.stroke();
+
+            // Ramp 2 - lower right
+            ctx.beginPath();
+            ctx.moveTo(width * 0.75, height * 0.6);
+            ctx.lineTo(width * 0.95, height * 0.55);
+            ctx.stroke();
+
+            // Ramp 3 - middle
+            ctx.beginPath();
+            ctx.moveTo(width * 0.55, height * 0.75);
+            ctx.lineTo(width * 0.7, height * 0.82);
+            ctx.stroke();
+            ctx.restore();
+
+            // Draw rotating pomegranate
+            titlePomRotation += 0.01;
+            const pomX = width / 2;
+            const pomY = height * 0.22;
+            const pomRadius = 55 * scale;
+            drawPomegranateAt(pomX, pomY, pomRadius, titlePomRotation);
+
+            // Title
+            ctx.fillStyle = '#fff';
+            ctx.font = `bold ${56 * scale}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // Title shadow
+            ctx.shadowColor = 'rgba(196, 30, 58, 0.8)';
+            ctx.shadowBlur = 20 * scale;
+            ctx.fillText('Pomegranate', width / 2, height * 0.4);
+            ctx.fillText('Panic', width / 2, height * 0.4 + 55 * scale);
+            ctx.shadowColor = 'transparent';
+
+            // Instructions
+            ctx.font = `${16 * scale}px Arial`;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            const instructionY = height * 0.62;
+            const lineHeight = 26 * scale;
+            ctx.fillText('🎯 Tap to place ramps and guide the pomegranate', width / 2, instructionY);
+            ctx.fillText('⬇️ Big drops trigger bounces for bonus points', width / 2, instructionY + lineHeight);
+            ctx.fillText('🔥 Chain bounces for combos - avoid the flames!', width / 2, instructionY + lineHeight * 2);
+
+            // Start button
+            const btnWidth = 200 * scale;
+            const btnHeight = 60 * scale;
+            const btnX = (width - btnWidth) / 2;
+            const btnY = height * 0.82;
+            buttons.start = drawButton('START', btnX, btnY, btnWidth, btnHeight);
+
+            // Branding and version
+            ctx.font = `${11 * scale}px Arial`;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+            ctx.textAlign = 'left';
+            ctx.fillText('synapticnoise.com', 10 * scale, height - 10 * scale);
+            ctx.textAlign = 'right';
+            ctx.fillText(VERSION, width - 10 * scale, height - 10 * scale);
+        }
+
         function drawGameOver() {
             const fade = gameOverFadeIn;
 
@@ -1605,7 +1753,7 @@
 
             // Draw the pomegranate in the center, slowly rotating (fades in)
             ctx.globalAlpha = fade;
-            const pomY = height / 2 - 80 * scale;
+            const pomY = height / 2 - 100 * scale;
             const pomRadius = 40 * scale;
             drawPomegranateAt(width / 2, pomY, pomRadius, gameOverRotation);
             ctx.globalAlpha = 1;
@@ -1614,14 +1762,19 @@
             ctx.fillStyle = `rgba(255, 255, 255, ${fade})`;
             ctx.font = `bold ${48 * scale}px Arial`;
             ctx.textAlign = 'center';
-            ctx.fillText('GAME OVER', width / 2, height / 2 + 20 * scale);
+            ctx.fillText('GAME OVER', width / 2, height / 2 - 10 * scale);
 
             ctx.font = `${32 * scale}px Arial`;
-            ctx.fillText(`Score: ${score}`, width / 2, height / 2 + 70 * scale);
+            ctx.fillText(`Score: ${score}`, width / 2, height / 2 + 40 * scale);
 
-            ctx.font = `${20 * scale}px Arial`;
-            ctx.fillStyle = `rgba(255, 255, 255, ${0.8 * fade})`;
-            ctx.fillText('Tap to restart', width / 2, height / 2 + 120 * scale);
+            // Play Again button
+            if (fade > 0.5) {
+                const btnWidth = 220 * scale;
+                const btnHeight = 55 * scale;
+                const btnX = (width - btnWidth) / 2;
+                const btnY = height / 2 + 90 * scale;
+                buttons.playAgain = drawButton('PLAY AGAIN', btnX, btnY, btnWidth, btnHeight, (fade - 0.5) * 2);
+            }
         }
 
         // Draw Hades fire effect at the bottom of the screen
@@ -1704,6 +1857,12 @@
         }
 
         function draw() {
+            // Title screen
+            if (gameState === 'title') {
+                drawTitleScreen();
+                return;
+            }
+
             // Background gradient
             const bgGradient = ctx.createLinearGradient(0, 0, 0, height);
             bgGradient.addColorStop(0, '#1a1a2e');
@@ -1765,9 +1924,17 @@
 
         // Input handling
         function handleInput(x, y) {
-            if (gameState === 'gameover') {
-                initGame();
-            } else {
+            if (gameState === 'title') {
+                // Check if Start button was clicked
+                if (isPointInButton(x, y, buttons.start)) {
+                    initGame();
+                }
+            } else if (gameState === 'gameover') {
+                // Check if Play Again button was clicked
+                if (isPointInButton(x, y, buttons.playAgain)) {
+                    initGame();
+                }
+            } else if (gameState === 'playing') {
                 placeRamp(x, y);
             }
         }
@@ -1775,10 +1942,7 @@
         canvas.addEventListener('touchstart', (e) => {
             const touch = e.touches[0];
             ghostPosition = { x: touch.clientX, y: touch.clientY };
-            // On game over, restart immediately on touch
-            if (gameState === 'gameover') {
-                initGame();
-            }
+            // Don't do anything on touchstart for title/gameover - wait for touchend
         });
 
         canvas.addEventListener('touchmove', (e) => {
@@ -1787,9 +1951,21 @@
         });
 
         canvas.addEventListener('touchend', (e) => {
-            // Place ramp where user releases (using last ghost position)
-            if (gameState === 'playing' && ghostPosition) {
-                placeRamp(ghostPosition.x, ghostPosition.y);
+            if (ghostPosition) {
+                if (gameState === 'title') {
+                    // Check if Start button was tapped
+                    if (isPointInButton(ghostPosition.x, ghostPosition.y, buttons.start)) {
+                        initGame();
+                    }
+                } else if (gameState === 'gameover') {
+                    // Check if Play Again button was tapped
+                    if (isPointInButton(ghostPosition.x, ghostPosition.y, buttons.playAgain)) {
+                        initGame();
+                    }
+                } else if (gameState === 'playing') {
+                    // Place ramp where user releases
+                    placeRamp(ghostPosition.x, ghostPosition.y);
+                }
             }
             ghostPosition = null;
         });
@@ -1840,7 +2016,7 @@
         // Initialize
         window.addEventListener('resize', resize);
         resize();
-        initGame();
+        initFireParticles(); // Initialize fire for title screen background
         requestAnimationFrame(gameLoop);
     </script>
 </body>

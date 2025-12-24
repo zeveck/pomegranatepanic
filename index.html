@@ -52,6 +52,7 @@
             height: 100%;
             overflow: hidden;
             touch-action: none;
+            overscroll-behavior: none;
             -webkit-touch-callout: none;
             -webkit-user-select: none;
             user-select: none;
@@ -76,11 +77,17 @@
         document.addEventListener('gesturechange', e => e.preventDefault());
         document.addEventListener('gestureend', e => e.preventDefault());
 
+        // Prevent back button/gesture from exiting the game
+        history.pushState(null, '', location.href);
+        window.addEventListener('popstate', () => {
+            history.pushState(null, '', location.href);
+        });
+
         const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
 
         // Version
-        const VERSION = 'v0.3.4';
+        const VERSION = 'v0.3.5';
 
         // Game constants
         const GRAVITY = 800; // Faster falling

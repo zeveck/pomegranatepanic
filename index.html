@@ -57,6 +57,11 @@
             -webkit-user-select: none;
             user-select: none;
             background: #1a1a2e;
+            /* Expose safe area insets as CSS variables for JavaScript */
+            --sai-top: env(safe-area-inset-top, 0px);
+            --sai-right: env(safe-area-inset-right, 0px);
+            --sai-bottom: env(safe-area-inset-bottom, 0px);
+            --sai-left: env(safe-area-inset-left, 0px);
         }
 
         canvas {
@@ -87,7 +92,7 @@
         const ctx = canvas.getContext('2d');
 
         // Version
-        const VERSION = 'v0.3.7';
+        const VERSION = 'v0.3.8';
 
         // Game constants
         const GRAVITY = 800; // Faster falling
@@ -203,6 +208,10 @@
         // Screen dimensions (will be set on resize)
         let width, height, scale;
 
+        // Safe area insets for devices with notches/curved screens
+        let safeAreaBottom = 0;
+        let safeAreaRight = 0;
+
         function resize() {
             const dpr = window.devicePixelRatio || 1;
             width = window.innerWidth;
@@ -211,6 +220,11 @@
             canvas.height = height * dpr;
             ctx.scale(dpr, dpr);
             scale = Math.min(width, height) / 400; // Base scale for consistent sizing
+
+            // Read safe area insets from CSS
+            const styles = getComputedStyle(document.documentElement);
+            safeAreaBottom = parseInt(styles.getPropertyValue('--sai-bottom')) || 0;
+            safeAreaRight = parseInt(styles.getPropertyValue('--sai-right')) || 0;
         }
 
         function generateRandomRamp() {
@@ -1560,7 +1574,8 @@
             ctx.font = `${10 * scale}px Arial`;
             ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
             ctx.textAlign = 'right';
-            ctx.fillText(VERSION, width - 10 * scale, height - 10 * scale);
+            // Extra padding (20px) to avoid curved screen edges
+            ctx.fillText(VERSION, width - 20 * scale - safeAreaRight, height - 25 * scale - safeAreaBottom);
         }
 
         function drawPomegranateAt(x, y, radius, rotation) {
@@ -1755,9 +1770,9 @@
             const brandingWidth = ctx.measureText(brandingText).width;
             buttons.branding = { x: brandingX - 5, y: brandingY - 14 * scale, width: brandingWidth + 10, height: 18 * scale };
 
-            // Version (lower right)
+            // Version (lower right, with safe area padding for curved screens)
             ctx.textAlign = 'right';
-            ctx.fillText(VERSION, width - 10 * scale, height - 10 * scale);
+            ctx.fillText(VERSION, width - 20 * scale - safeAreaRight, height - 25 * scale - safeAreaBottom);
         }
 
         function drawGameOver() {
@@ -1947,7 +1962,7 @@
                 }
                 // Check if branding link was clicked
                 else if (isPointInButton(x, y, buttons.branding)) {
-                    window.open('https://synapticnoise.com', '_blank');
+                    window.location.href = 'https://synapticnoise.com';
                 }
             } else if (gameState === 'gameover') {
                 // Check if Play Again button was clicked
@@ -1979,7 +1994,7 @@
                     }
                     // Check if branding link was tapped
                     else if (isPointInButton(ghostPosition.x, ghostPosition.y, buttons.branding)) {
-                        window.open('https://synapticnoise.com', '_blank');
+                        window.location.href = 'https://synapticnoise.com';
                     }
                 } else if (gameState === 'gameover') {
                     // Check if Play Again button was tapped

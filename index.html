@@ -87,7 +87,7 @@
         const ctx = canvas.getContext('2d');
 
         // Version
-        const VERSION = 'v0.3.5';
+        const VERSION = 'v0.3.6';
 
         // Game constants
         const GRAVITY = 800; // Faster falling
@@ -1559,7 +1559,7 @@
             ctx.font = `${10 * scale}px Arial`;
             ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
             ctx.textAlign = 'right';
-            ctx.fillText(VERSION, width - 10 * scale, height - 10 * scale);
+            ctx.fillText(VERSION, width - 20 * scale, height - 20 * scale);
         }
 
         function drawPomegranateAt(x, y, radius, rotation) {
@@ -1742,13 +1742,15 @@
             const btnY = height * 0.82;
             buttons.start = drawButton('START', btnX, btnY, btnWidth, btnHeight);
 
-            // Branding and version
+            // Branding (upper left, title screen only)
             ctx.font = `${11 * scale}px Arial`;
             ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
             ctx.textAlign = 'left';
-            ctx.fillText('synapticnoise.com', 10 * scale, height - 10 * scale);
+            ctx.fillText('synapticnoise.com', 15 * scale, 25 * scale);
+
+            // Version (lower right)
             ctx.textAlign = 'right';
-            ctx.fillText(VERSION, width - 10 * scale, height - 10 * scale);
+            ctx.fillText(VERSION, width - 20 * scale, height - 20 * scale);
         }
 
         function drawGameOver() {

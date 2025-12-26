@@ -87,7 +87,7 @@
         const ctx = canvas.getContext('2d');
 
         // Version
-        const VERSION = 'v0.3.6';
+        const VERSION = 'v0.3.7';
 
         // Game constants
         const GRAVITY = 800; // Faster falling
@@ -140,7 +140,8 @@
         // Button definitions (will be set on resize)
         let buttons = {
             start: { x: 0, y: 0, width: 0, height: 0 },
-            playAgain: { x: 0, y: 0, width: 0, height: 0 }
+            playAgain: { x: 0, y: 0, width: 0, height: 0 },
+            branding: { x: 0, y: 0, width: 0, height: 0 }
         };
         let cameraY = 0; // Vertical scroll offset
         let cameraVelocity = 0; // Smooth camera velocity
@@ -1559,7 +1560,7 @@
             ctx.font = `${10 * scale}px Arial`;
             ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
             ctx.textAlign = 'right';
-            ctx.fillText(VERSION, width - 20 * scale, height - 20 * scale);
+            ctx.fillText(VERSION, width - 10 * scale, height - 10 * scale);
         }
 
         function drawPomegranateAt(x, y, radius, rotation) {
@@ -1742,15 +1743,21 @@
             const btnY = height * 0.82;
             buttons.start = drawButton('START', btnX, btnY, btnWidth, btnHeight);
 
-            // Branding (upper left, title screen only)
+            // Branding link (upper left, title screen only)
             ctx.font = `${11 * scale}px Arial`;
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
             ctx.textAlign = 'left';
-            ctx.fillText('synapticnoise.com', 15 * scale, 25 * scale);
+            const brandingText = 'synapticnoise.com';
+            const brandingX = 12 * scale;
+            const brandingY = 18 * scale;
+            ctx.fillText(brandingText, brandingX, brandingY);
+            // Store clickable area for branding link
+            const brandingWidth = ctx.measureText(brandingText).width;
+            buttons.branding = { x: brandingX - 5, y: brandingY - 14 * scale, width: brandingWidth + 10, height: 18 * scale };
 
             // Version (lower right)
             ctx.textAlign = 'right';
-            ctx.fillText(VERSION, width - 20 * scale, height - 20 * scale);
+            ctx.fillText(VERSION, width - 10 * scale, height - 10 * scale);
         }
 
         function drawGameOver() {
@@ -1938,6 +1945,10 @@
                 if (isPointInButton(x, y, buttons.start)) {
                     initGame();
                 }
+                // Check if branding link was clicked
+                else if (isPointInButton(x, y, buttons.branding)) {
+                    window.open('https://synapticnoise.com', '_blank');
+                }
             } else if (gameState === 'gameover') {
                 // Check if Play Again button was clicked
                 if (isPointInButton(x, y, buttons.playAgain)) {
@@ -1965,6 +1976,10 @@
                     // Check if Start button was tapped
                     if (isPointInButton(ghostPosition.x, ghostPosition.y, buttons.start)) {
                         initGame();
+                    }
+                    // Check if branding link was tapped
+                    else if (isPointInButton(ghostPosition.x, ghostPosition.y, buttons.branding)) {
+                        window.open('https://synapticnoise.com', '_blank');
                     }
                 } else if (gameState === 'gameover') {
                     // Check if Play Again button was tapped

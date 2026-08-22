@@ -1,0 +1,92 @@
+{
+  "id": "example-animation-id",
+  "asset": {
+    "subject": "example subject",
+    "style": "pixel art",
+    "canonicalReference": ".anim8gen/runs/example-animation-id/reference/reference.png",
+    "references": [],
+    "promptTraits": [
+      "single subject",
+      "side-view",
+      "compact readable silhouette",
+      "solid chroma-key background",
+      "no text"
+    ]
+  },
+  "render": {
+    "canvas": [128, 128],
+    "workingSize": [1024, 1024],
+    "exportScale": 8,
+    "fps": 8,
+    "resampling": "auto",
+    "edgeTreatment": "auto",
+    "paletteLimit": 48
+  },
+  "generation": {
+    "preferredSkill": "imagegen2",
+    "candidateManifest": ".anim8gen/runs/example-animation-id/manifests/candidates.jsonl",
+    "acceptedManifest": ".anim8gen/runs/example-animation-id/manifests/accepted-frames.json",
+    "retryBudget": 2
+  },
+  "segmentation": {
+    "strategy": "chroma-key",
+    "chromaKey": "#ff00ff",
+    "alphaThreshold": 8,
+    "chromaTolerance": 32
+  },
+  "alignment": {
+    "defaultAnchor": "body_bottom_center",
+    "floorY": 112,
+    "stabilizeAnchorX": true,
+    "loopClosure": true,
+    "supportedAnchors": [
+      "body_bottom_center",
+      "feet_center",
+      "body_center",
+      "head_center",
+      "manual"
+    ],
+    "manualOverrides": {}
+  },
+  "validation": {
+    "defaultThresholds": {
+      "anchorXJumpPx": 3,
+      "anchorYJumpPx": 2,
+      "edgePaddingPx": 2,
+      "bboxHeightVariancePct": 12,
+      "bboxWidthVariancePct": 18,
+      "visibleAreaVariancePct": 20,
+      "centroidJumpPx": 5,
+      "adjacentSilhouetteIouMin": 0.55,
+      "meanLuminanceShiftPct": 15,
+      "dominantHueShiftDegrees": 12
+    },
+    "motionPhases": []
+  },
+  "preview": {
+    "strategy": "canvas-playback",
+    "displayOffsets": {},
+    "runtimeEffects": [],
+    "minimalControls": [
+      "playPause",
+      "fps",
+      "step",
+      "frameLabel",
+      "checkerboard"
+    ]
+  },
+  "frames": [
+    {
+      "index": 0,
+      "label": "idle",
+      "pose": "clear starting pose",
+      "anchor": "body_bottom_center"
+    },
+    {
+      "index": 1,
+      "label": "action",
+      "pose": "clear action pose",
+      "anchor": "body_bottom_center"
+    }
+  ]
+}

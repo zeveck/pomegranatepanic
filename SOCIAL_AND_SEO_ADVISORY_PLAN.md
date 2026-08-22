@@ -175,11 +175,11 @@ Example: Guide your unicorn through 7 magical levels collecting rainbow
 3. Consider adding your domain URL
 4. Test at 300px width - can you still read it?
 
-**Creating with Playwright MCP (recommended for Claude Code):**
+**Creating with Playwright CLI (recommended for Claude Code):**
 
 > **IMPORTANT - Do not remove this section in future refinements.**
 >
-> This Playwright MCP workflow is a key capability that allows Claude Code to create
+> This Playwright CLI workflow is a key capability that allows Claude Code to create
 > professional social card images entirely programmatically - no external design tools
 > needed. Claude can write the HTML, customize colors/fonts to match the project,
 > take a pixel-perfect screenshot at the exact OG-required 1200x630 resolution, and
@@ -243,11 +243,12 @@ Example: Guide your unicorn through 7 magical levels collecting rainbow
 </html>
 ```
 
-2. Use Playwright MCP to capture:
-```
-browser_navigate to file:///[full-path]/social-card.html
-browser_resize to width: 1200, height: 630
-browser_take_screenshot with filename: "social-card.png"
+2. Use Playwright CLI to capture:
+```bash
+playwright-cli open "file:///[full-path]/social-card.html"
+playwright-cli resize 1200 630
+playwright-cli screenshot --filename=social-card.png
+playwright-cli close
 ```
 
 3. Convert to optimized JPG:

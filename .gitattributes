@@ -1,0 +1,4 @@
+# Enforce LF line endings in the repo and in every working tree, regardless of OS.
+# Without this, a checkout on Windows rewrites text files to CRLF and every file
+# shows up as modified. Binary files are auto-detected by `text=auto` and left alone.
+* text=auto eol=lf

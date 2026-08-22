@@ -79,5 +79,12 @@ echo "🔎 Verifying Chromium launches..."
 playwright-cli open about:blank >/dev/null
 playwright-cli close >/dev/null
 
+# Install Pillow for the anim8gen skill's runtime tools (.claude/skills/anim8gen).
+# Pinned to match upstream (zeveck/anim8gen requirements.txt); its export_gif.py
+# uses Image.getdata(), which is removed in Pillow 14, so don't bump past 13.x
+# without checking upstream first.
+echo "🖼️ Installing Pillow for anim8gen..."
+pip install --quiet 'Pillow==12.2.0'
+
 # Done.
 echo "✅ Setup complete."

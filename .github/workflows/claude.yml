@@ -19,11 +19,12 @@ jobs:
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pull-requests: read
-      issues: read
+      contents: write       # Required to commit and push changes
+      pull-requests: write  # Required to create and update PRs
+      issues: write         # Required to comment on issues
       id-token: write
-      actions: read # Required for Claude to read CI results on PRs
+      actions: read         # Required for Claude to read CI results on PRs
+      checks: read          # Optional: enhanced access to check runs
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -46,5 +47,15 @@ jobs:
           # Optional: Add claude_args to customize behavior and configuration
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
-          claude_args: '--model claude-opus-5'
+          # In CI there is no interactive user, so allow git operations and override the
+          # approval rule. NOTE: anything not listed here is auto-denied (no one to
+          # approve it). Patterns use prefix matching: "Bash(git commit:*)" matches
+          # "git commit -m ...". Piped commands are checked segment by segment, which is
+          # why cat/head/tail/grep/wc are allowed too. This is a static site - no
+          # package.json, no build step and no test suite - so no npm/test entries.
+          claude_args: >-
+            --model claude-opus-5
+            --allowedTools "Bash(git add:*),Bash(git commit:*),Bash(git checkout:*),Bash(git switch:*),Bash(git push:*),Bash(git branch:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(grep:*),Bash(wc:*),Bash(ls:*),Bash(find:*)"
+            --append-system-prompt "You are running in GitHub Actions CI. You may commit to branches and create PRs without asking for user approval. Never push directly to main. Always create a PR if you have committed changes. This repository is a static site: index.html plus assets, with no package.json, no build step and no test suite, so there is nothing to install or run. If ANY tool or command is blocked by permissions, you MUST include in your response: (1) the exact tool name, (2) the exact command or arguments attempted, (3) the full error message. Do not paraphrase or summarize the error."
+
 

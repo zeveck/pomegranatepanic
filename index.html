@@ -69,11 +69,47 @@
             width: 100%;
             height: 100%;
         }
+
+        /* Title screen links (lower corners, title screen only) */
+        .title-link {
+            position: fixed;
+            bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+            z-index: 10;
+            padding: 4px 6px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1;
+            color: rgba(255, 255, 255, 0.85);
+            text-decoration: none;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+            opacity: 0.7;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .title-link:hover, .title-link:focus-visible {
+            opacity: 1;
+            text-decoration: underline;
+        }
+        #link-site { left: calc(env(safe-area-inset-left, 0px) + 12px); }
+        #link-github { right: calc(env(safe-area-inset-right, 0px) + 12px); }
+        body:not(.on-title) .title-link { display: none; }
+        @media (pointer: coarse), (max-width: 600px), (max-height: 500px) {
+            .title-link { font-size: 12px; }
+        }
     </style>
 </head>
-<body>
+<body class="on-title">
     <canvas id="game"></canvas>
+    <a id="link-site" class="title-link" href="https://synapticnoise.com/">synapticnoise.com</a>
+    <a id="link-github" class="title-link" href="https://github.com/zeveck/pomegranatepanic" target="_blank" rel="noopener" title="Pomegranate Panic on GitHub: how it was made" aria-label="Pomegranate Panic on GitHub: how it was made">GitHub</a>
     <script>
+        // Title screen links: keep their taps and clicks away from the game
+        // (and from the document-wide touch blockers below, so they still open)
+        document.querySelectorAll('.title-link').forEach(link => {
+            ['touchstart', 'touchmove', 'touchend', 'pointerdown', 'mousedown', 'click'].forEach(type => {
+                link.addEventListener(type, e => e.stopPropagation());
+            });
+        });
+
         // Prevent all default touch behaviors
         document.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
         document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
@@ -92,7 +128,7 @@
         const ctx = canvas.getContext('2d');
 
         // Version
-        const VERSION = 'v0.3.8';
+        const VERSION = 'v0.3.9';
 
         // Game constants
         const GRAVITY = 800; // Faster falling
@@ -1758,21 +1794,13 @@
             const btnY = height * 0.82;
             buttons.start = drawButton('START', btnX, btnY, btnWidth, btnHeight);
 
-            // Branding link (upper left, title screen only)
+            // (The synapticnoise.com and GitHub links are HTML links in the lower corners)
+
+            // Version (lower right, kept above the GitHub link)
             ctx.font = `${11 * scale}px Arial`;
             ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-            ctx.textAlign = 'left';
-            const brandingText = 'synapticnoise.com';
-            const brandingX = 12 * scale;
-            const brandingY = 18 * scale;
-            ctx.fillText(brandingText, brandingX, brandingY);
-            // Store clickable area for branding link
-            const brandingWidth = ctx.measureText(brandingText).width;
-            buttons.branding = { x: brandingX - 5, y: brandingY - 14 * scale, width: brandingWidth + 10, height: 18 * scale };
-
-            // Version (lower right, with safe area padding for curved screens)
             ctx.textAlign = 'right';
-            ctx.fillText(VERSION, width - 20 * scale - safeAreaRight, height - 25 * scale - safeAreaBottom);
+            ctx.fillText(VERSION, width - 20 * scale - safeAreaRight, height - Math.max(25 * scale, 44) - safeAreaBottom);
         }
 
         function drawGameOver() {
@@ -1960,10 +1988,6 @@
                 if (isPointInButton(x, y, buttons.start)) {
                     initGame();
                 }
-                // Check if branding link was clicked
-                else if (isPointInButton(x, y, buttons.branding)) {
-                    window.location.href = 'https://synapticnoise.com';
-                }
             } else if (gameState === 'gameover') {
                 // Check if Play Again button was clicked
                 if (isPointInButton(x, y, buttons.playAgain)) {
@@ -1991,10 +2015,6 @@
                     // Check if Start button was tapped
                     if (isPointInButton(ghostPosition.x, ghostPosition.y, buttons.start)) {
                         initGame();
-                    }
-                    // Check if branding link was tapped
-                    else if (isPointInButton(ghostPosition.x, ghostPosition.y, buttons.branding)) {
-                        window.location.href = 'https://synapticnoise.com';
                     }
                 } else if (gameState === 'gameover') {
                     // Check if Play Again button was tapped
@@ -2048,6 +2068,7 @@
 
             update(dt);
             draw();
+            document.body.classList.toggle('on-title', gameState === 'title');
 
             requestAnimationFrame(gameLoop);
         }

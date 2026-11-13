@@ -12,6 +12,8 @@ A mobile-first HTML5 game where you place ramps to keep a rolling pomegranate fr
 2. Big drops trigger bounces for bonus points - chain them for combos!
 3. Survive as long as possible as speed increases
 
+Found a bug? Press Ctrl+Shift+F, or pick 'Report a bug' (you'll need a GitHub account).
+
 ## Features
 
 - Mobile-first touch controls with drag-to-place and ghost preview
@@ -33,6 +35,7 @@ Then visit `http://localhost:8080`
 
 - **Mobile**: Drag to position, release to place. Tap to restart.
 - **Desktop**: Click to place. Click to restart.
+- **Report a bug**: Ctrl+Shift+F, or the 'Report a bug' button on the title and game over screens.
 
 ## Tech Stack
 
@@ -42,4 +45,4 @@ Then visit `http://localhost:8080`
 
 ## Version
 
-v0.3.9
+v0.4.0

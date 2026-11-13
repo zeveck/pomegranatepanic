@@ -95,25 +95,89 @@
         @media (pointer: coarse), (max-width: 600px), (max-height: 500px) {
             .title-link { font-size: 12px; }
         }
+
+        /* "Report a bug" button (title and game over screens, top right),
+           in the style of the game's own buttons */
+        #report-btn {
+            position: fixed;
+            top: calc(env(safe-area-inset-top, 0px) + 12px);
+            right: calc(env(safe-area-inset-right, 0px) + 12px);
+            z-index: 10;
+            display: none;
+            padding: 8px 14px;
+            font-family: Arial, sans-serif;
+            font-size: 15px;
+            font-weight: bold;
+            line-height: 1.15;
+            color: #fff;
+            text-align: center;
+            background: linear-gradient(#c41e3a, #8b0000 50%, #4a0000);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+        #report-btn .keys {
+            display: block;
+            font-size: 11px;
+            font-weight: normal;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        #report-btn:hover { filter: brightness(1.15); }
+        #report-btn:focus-visible { outline: 3px solid #FFD700; outline-offset: 2px; }
+        body.on-title #report-btn, body.on-gameover #report-btn { display: block; }
+        @media (pointer: coarse), (max-width: 600px), (max-height: 500px) {
+            #report-btn { font-size: 13px; padding: 7px 11px; }
+        }
+        @media (pointer: coarse) {
+            #report-btn { min-height: 44px; }
+            #report-btn .keys { display: none; }
+        }
+
+        /* The bug report form: let players select and type in it */
+        gh-feedback { -webkit-user-select: text; user-select: text; touch-action: auto; }
     </style>
 </head>
 <body class="on-title">
     <canvas id="game"></canvas>
     <a id="link-site" class="title-link" href="https://synapticnoise.com/">synapticnoise.com</a>
     <a id="link-github" class="title-link" href="https://github.com/zeveck/pomegranatepanic" target="_blank" rel="noopener" title="Pomegranate Panic on GitHub: how it was made" aria-label="Pomegranate Panic on GitHub: how it was made">GitHub</a>
+    <button id="report-btn" type="button" aria-label="Report a bug" aria-keyshortcuts="Control+Shift+F">Report a bug<span class="keys">Ctrl+Shift+F</span></button>
+    <gh-feedback id="report" trigger="none" repo="zeveck/pomegranatepanic" template="bug.yml"
+      types="bug,feature" theme="dark" color="#c41e3a"></gh-feedback>
     <script>
-        // Title screen links: keep their taps and clicks away from the game
+        // Ctrl+Shift+F opens the bug report from anywhere (kept separate from
+        // the game's code, so an error there can't stop it)
+        addEventListener('keydown', (e) => {
+            if (!e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey || e.key.toLowerCase() !== 'f') return;
+            const fb = document.getElementById('report');
+            if (!fb?.getAttribute('repo') || document.activeElement === fb) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            try { window.reportShortcut?.(); } catch {}   // the game pauses, if it still can
+            fb.open();
+        }, true);
+    </script>
+    <script>
+        // The bug report form, while it's open: the game ignores input and stands still
+        const reportEl = () => document.getElementById('report');
+        const reportOpen = () => { const fb = reportEl(); return !!fb && (document.activeElement === fb || fb._isOpen === true); };
+        const inReport = (e) => { const fb = reportEl(); return !!fb && !!e.composedPath?.().includes(fb); };
+
+        // Title screen links and the report button: keep their taps and clicks away from the game
         // (and from the document-wide touch blockers below, so they still open)
-        document.querySelectorAll('.title-link').forEach(link => {
+        document.querySelectorAll('.title-link, #report-btn').forEach(link => {
             ['touchstart', 'touchmove', 'touchend', 'pointerdown', 'mousedown', 'click'].forEach(type => {
                 link.addEventListener(type, e => e.stopPropagation());
             });
         });
 
-        // Prevent all default touch behaviors
-        document.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
-        document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
-        document.addEventListener('touchend', e => e.preventDefault(), { passive: false });
+        // Prevent all default touch behaviors (except in the bug report form, so its text boxes work)
+        const blockTouch = (e) => { if (!inReport(e) && !reportOpen()) e.preventDefault(); };
+        document.addEventListener('touchstart', blockTouch, { passive: false });
+        document.addEventListener('touchmove', blockTouch, { passive: false });
+        document.addEventListener('touchend', blockTouch, { passive: false });
         document.addEventListener('gesturestart', e => e.preventDefault());
         document.addEventListener('gesturechange', e => e.preventDefault());
         document.addEventListener('gestureend', e => e.preventDefault());
@@ -128,7 +192,7 @@
         const ctx = canvas.getContext('2d');
 
         // Version
-        const VERSION = 'v0.3.9';
+        const VERSION = 'v0.4.0';
 
         // Game constants
         const GRAVITY = 800; // Faster falling
@@ -1999,17 +2063,20 @@
         }
 
         canvas.addEventListener('touchstart', (e) => {
+            if (inReport(e) || reportOpen()) return;
             const touch = e.touches[0];
             ghostPosition = { x: touch.clientX, y: touch.clientY };
             // Don't do anything on touchstart for title/gameover - wait for touchend
         });
 
         canvas.addEventListener('touchmove', (e) => {
+            if (inReport(e) || reportOpen()) return;
             const touch = e.touches[0];
             ghostPosition = { x: touch.clientX, y: touch.clientY };
         });
 
         canvas.addEventListener('touchend', (e) => {
+            if (inReport(e) || reportOpen()) return;
             if (ghostPosition) {
                 if (gameState === 'title') {
                     // Check if Start button was tapped
@@ -2030,11 +2097,14 @@
         });
 
         canvas.addEventListener('mousedown', (e) => {
+            if (inReport(e) || reportOpen()) return;
             handleInput(e.clientX, e.clientY);
         });
 
         // Cheat key for playtesting: P to collect next seed
         document.addEventListener('keydown', (e) => {
+            if (inReport(e) || reportOpen()) return;   // typing in the bug report
+            if (e.ctrlKey || e.metaKey || e.altKey) return;   // shortcuts aren't game keys
             if (e.key === 'p' || e.key === 'P') {
                 if (gameState === 'playing' && collectedSeeds < MAX_SEEDS) {
                     // Create a fake seed at pom position and collect it
@@ -2053,10 +2123,12 @@
         });
 
         canvas.addEventListener('mousemove', (e) => {
+            if (inReport(e) || reportOpen()) return;
             ghostPosition = { x: e.clientX, y: e.clientY };
         });
 
         canvas.addEventListener('mouseleave', () => {
+            if (reportOpen()) return;
             ghostPosition = null;
         });
 
@@ -2066,9 +2138,17 @@
             const dt = Math.min((timestamp - lastTime) / 1000, 0.1); // Cap delta time
             lastTime = timestamp;
 
+            // While the bug report form is open, the game stands still
+            // (and the canvas keeps the picture sent with the report)
+            if (reportOpen()) {
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+
             update(dt);
             draw();
             document.body.classList.toggle('on-title', gameState === 'title');
+            document.body.classList.toggle('on-gameover', gameState === 'gameover' && gameOverFadeIn > 0.5);
 
             requestAnimationFrame(gameLoop);
         }
@@ -2078,6 +2158,43 @@
         resize();
         initFireParticles(); // Initialize fire for title screen background
         requestAnimationFrame(gameLoop);
+
+        // Bug reports ("Report a bug" button, or Ctrl+Shift+F)
+        (() => {
+            const fb = reportEl();
+            if (!fb) return;
+            const btn = document.getElementById('report-btn');
+            if (!fb.getAttribute('repo')) { btn.remove(); return; }
+            btn.addEventListener('click', () => fb.open());
+
+            // The picture sent with the report: the canvas as it is (the form
+            // isn't drawn on it, and the game stops drawing while it's open)
+            fb.getScreenshot = () => new Promise((r) => canvas.toBlob(r, 'image/png'));
+            // No pause in this game: the loop above stands still while the form is open
+            window.reportShortcut = () => {};
+
+            const errors = [];
+            const keep = (m) => { errors.push(String(m).replace(/\s+/g, ' ').slice(0, 200)); errors.splice(0, errors.length - 5); };
+            addEventListener('error', (e) => keep(e.message));
+            addEventListener('unhandledrejection', (e) => keep(e.reason?.message ?? e.reason));
+            const flat = (v) => String(v).replace(/\s+/g, ' ');
+            fb.getContext = () => ({
+                game: 'Pomegranate Panic',
+                version: VERSION,
+                address: location.origin + location.pathname,
+                updated: document.lastModified,
+                build: window.desktop ? `desktop app (${window.desktop.platform})` : 'web',
+                browser: navigator.userAgent,
+                screen: `${innerWidth}x${innerHeight} @${devicePixelRatio}x`,
+                state: flat(JSON.stringify({
+                    screen: gameState, score, time: Math.round(gameTime), speed: +speedMultiplier.toFixed(2),
+                    seeds: collectedSeeds, golden: isGoldenPom, combo: comboCount, falling: fallingIntoFire,
+                })),
+                errors: errors.join(' | ') || 'none',
+            });
+            if (window.desktop) fb.openLink = (url) => { window.open(url, '_blank'); return true; };
+        })();
     </script>
+    <script type="module" src="vendor/gh-feedback.js"></script>
 </body>
 </html>

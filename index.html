@@ -162,7 +162,7 @@
     <script>
         // The bug report form, while it's open: the game ignores input and stands still
         const reportEl = () => document.getElementById('report');
-        const reportOpen = () => { const fb = reportEl(); return !!fb && (document.activeElement === fb || fb._isOpen === true); };
+        const reportOpen = () => { const fb = reportEl(); return !!fb && (document.activeElement === fb || fb.isOpen === true); };
         const inReport = (e) => { const fb = reportEl(); return !!fb && !!e.composedPath?.().includes(fb); };
 
         // Title screen links and the report button: keep their taps and clicks away from the game
